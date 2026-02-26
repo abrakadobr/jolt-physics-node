@@ -1,5 +1,10 @@
 # jolt-physics-node
 
+[![npm version](https://img.shields.io/npm/v/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+[![npm downloads](https://img.shields.io/npm/dm/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+[![license](https://img.shields.io/npm/l/jolt-physics-node)](./LICENSE)
+[![node](https://img.shields.io/node/v/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+
 Node.js native binding for [Jolt Physics](https://github.com/jrouwe/JoltPhysics) via Node-API (N-API).
 Runs entirely on the server — no WebAssembly, no browser target.
 
@@ -31,9 +36,21 @@ Runs entirely on the server — no WebAssembly, no browser target.
 
 ## Installation
 
+**Via npm** (recommended):
+
 ```bash
-git clone --recurse-submodules <repo-url>
-npm install        # builds the native addon automatically
+npm install jolt-physics-node
+```
+
+The native addon is compiled automatically during install. No prebuilt binaries —
+a C++ toolchain is required (see Requirements above).
+
+**From source** (for development / contributing):
+
+```bash
+git clone --recurse-submodules https://github.com/abrakadobr/jolt-physics-node
+cd jolt-physics-node
+npm install
 ```
 
 If you cloned without `--recurse-submodules`:

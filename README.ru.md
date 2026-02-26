@@ -1,5 +1,10 @@
 # jolt-physics-node
 
+[![npm version](https://img.shields.io/npm/v/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+[![npm downloads](https://img.shields.io/npm/dm/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+[![license](https://img.shields.io/npm/l/jolt-physics-node)](./LICENSE)
+[![node](https://img.shields.io/node/v/jolt-physics-node)](https://www.npmjs.com/package/jolt-physics-node)
+
 Нативный Node.js биндинг для [Jolt Physics](https://github.com/jrouwe/JoltPhysics) через Node-API (N-API).
 Работает полностью на сервере — без WebAssembly и браузерного окружения.
 
@@ -31,9 +36,21 @@
 
 ## Установка
 
+**Через npm** (рекомендуется):
+
 ```bash
-git clone --recurse-submodules <repo-url>
-npm install        # автоматически собирает нативный аддон
+npm install jolt-physics-node
+```
+
+Нативный аддон компилируется автоматически при установке. Prebuilt-бинарей нет —
+необходим C++ тулчейн (см. Требования выше).
+
+**Из исходников** (для разработки / контрибуции):
+
+```bash
+git clone --recurse-submodules https://github.com/abrakadobr/jolt-physics-node
+cd jolt-physics-node
+npm install
 ```
 
 Если клонировали без `--recurse-submodules`:
