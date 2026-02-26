@@ -1,7 +1,17 @@
 {
   "name": "jolt-physics-node",
   "version": "0.1.0",
-  "description": "Node-API backend binding for Jolt Physics",
+  "description": "Node.js N-API binding for Jolt Physics — rigid body simulation for server-side applications",
+  "author": "abrakadobr",
+  "license": "MIT",
+  "homepage": "https://github.com/abrakadobr/jolt-physics-node",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abrakadobr/jolt-physics-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abrakadobr/jolt-physics-node/issues"
+  },
   "main": "index.js",
   "exports": {
     ".": {
@@ -12,6 +22,22 @@
   },
   "types": "index.d.ts",
   "gypfile": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "index.js",
+    "index.mjs",
+    "index.d.ts",
+    "binding.gyp",
+    "src/addon.cpp",
+    "src/PhysicsWorker.js",
+    "src/physics-worker.js",
+    "JoltPhysics/Jolt/",
+    "README.md",
+    "README.ru.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "node-gyp rebuild",
     "test": "node test/smoke.js",
@@ -21,10 +47,15 @@
   "keywords": [
     "jolt",
     "physics",
+    "rigid-body",
+    "simulation",
     "node-api",
-    "native-addon"
+    "napi",
+    "native-addon",
+    "game-physics",
+    "collision",
+    "ragdoll"
   ],
-  "license": "MIT",
   "devDependencies": {
     "nodemon": "^3.1.14",
     "typedoc": "^0.27.0"
