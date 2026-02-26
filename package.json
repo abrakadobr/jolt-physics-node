@@ -1,0 +1,32 @@
+{
+  "name": "jolt-physics-node",
+  "version": "0.1.0",
+  "description": "Node-API backend binding for Jolt Physics",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.js"
+    }
+  },
+  "types": "index.d.ts",
+  "gypfile": true,
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "test": "node test/smoke.js",
+    "examples": "nodemon examples/server.js",
+    "docs": "typedoc"
+  },
+  "keywords": [
+    "jolt",
+    "physics",
+    "node-api",
+    "native-addon"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "typedoc": "^0.27.0"
+  }
+}

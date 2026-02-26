@@ -1,0 +1,10 @@
+{
+  "entryPoints": ["index.d.ts"],
+  "out": "docs",
+  "name": "jolt-physics-node",
+  "readme": "none",
+  "skipErrorChecking": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "sort": ["source-order"]
+}

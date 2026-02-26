@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jolt Physics Backend Examples</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="panel">
+        <h1>Jolt Backend Demos</h1>
+
+        <label class="field">
+          <span>Example</span>
+          <select id="exampleSelect"></select>
+        </label>
+
+        <div class="actions">
+          <button id="resetBtn">Load Example</button>
+          <button id="playBtn">Play</button>
+          <button id="pauseBtn">Pause</button>
+          <button id="stepBtn">Step x 10</button>
+        </div>
+
+        <h2>Spawn Sphere</h2>
+        <div class="grid3">
+          <input id="spawnX" type="number" value="0" step="0.1" />
+          <input id="spawnY" type="number" value="6" step="0.1" />
+          <input id="spawnR" type="number" value="0.4" step="0.1" min="0.1" />
+        </div>
+        <button id="spawnBtn">Spawn</button>
+
+        <h2>Impulse</h2>
+        <input id="bodyId" type="number" placeholder="Body ID" />
+        <div class="grid3">
+          <input id="impX" type="number" value="0" step="0.5" />
+          <input id="impY" type="number" value="8" step="0.5" />
+          <input id="impZ" type="number" value="0" step="0.5" />
+        </div>
+        <button id="impulseBtn">Apply Impulse</button>
+
+        <h2>Ray Cast</h2>
+        <div class="grid3">
+          <input id="rayOX" type="number" value="0" step="0.1" />
+          <input id="rayOY" type="number" value="10" step="0.1" />
+          <input id="rayOZ" type="number" value="0" step="0.1" />
+        </div>
+        <div class="grid3">
+          <input id="rayDX" type="number" value="0" step="0.1" />
+          <input id="rayDY" type="number" value="-1" step="0.1" />
+          <input id="rayDZ" type="number" value="0" step="0.1" />
+        </div>
+        <input id="rayMax" type="number" value="30" step="0.5" min="1" />
+        <button id="rayBtn">Cast Ray</button>
+
+        <h2>Query Filters</h2>
+        <div class="grid2">
+          <input id="qfLayerMask" type="number" value="3" step="1" min="0" placeholder="layerMask (bits)" />
+          <input id="qfExclude" type="number" value="" placeholder="excludeBodyId" />
+        </div>
+        <div class="actions">
+          <button id="qfAllBtn">All Hits + Filter</button>
+          <button id="qfBothBtn">Both Layers</button>
+        </div>
+        <div class="actions">
+          <button id="qfMovingBtn">MOVING only (bit 1)</button>
+          <button id="qfStaticBtn">NON_MOVING only (bit 0)</button>
+        </div>
+
+        <h2>Sphere Cast</h2>
+        <div class="grid3">
+          <input id="scOX" type="number" value="0" step="0.1" />
+          <input id="scOY" type="number" value="5" step="0.1" />
+          <input id="scOZ" type="number" value="0" step="0.1" />
+        </div>
+        <div class="grid3">
+          <input id="scDX" type="number" value="0" step="0.1" />
+          <input id="scDY" type="number" value="-1" step="0.1" />
+          <input id="scDZ" type="number" value="0" step="0.1" />
+        </div>
+        <div class="grid3">
+          <input id="scMax" type="number" value="12" step="0.5" min="0.5" />
+          <input id="scR" type="number" value="0.3" step="0.05" min="0.05" />
+          <button id="sphereCastBtn">Cast</button>
+        </div>
+
+        <h2>Sphere Collide</h2>
+        <div class="grid3">
+          <input id="coX" type="number" value="0" step="0.1" />
+          <input id="coY" type="number" value="1.5" step="0.1" />
+          <input id="coZ" type="number" value="0" step="0.1" />
+        </div>
+        <div class="grid3">
+          <input id="coR" type="number" value="0.6" step="0.05" min="0.05" />
+          <input id="coSep" type="number" value="0.1" step="0.05" min="0" />
+          <button id="sphereCollideBtn">Collide</button>
+        </div>
+
+        <h2>Checkpoint</h2>
+        <div class="actions">
+          <button id="saveSnapBtn">Save Checkpoint</button>
+          <button id="restoreSnapBtn">Restore Checkpoint</button>
+        </div>
+
+        <h2>Motor Presets</h2>
+        <div class="actions">
+          <button id="motorOffBtn">Motors Off</button>
+          <button id="motorVelBtn">Velocity</button>
+          <button id="motorPosBtn">Position</button>
+        </div>
+
+        <h2>Spring Controls</h2>
+        <div class="grid2">
+          <input id="spFreq" type="number" value="4" step="0.1" min="0.1" placeholder="frequency Hz" />
+          <input id="spDamp" type="number" value="0.7" step="0.05" min="0" placeholder="damping" />
+        </div>
+        <div class="grid2">
+          <input id="spHingeTarget" type="number" value="0.9" step="0.1" placeholder="hinge angle" />
+          <input id="spSliderTarget" type="number" value="1.0" step="0.1" placeholder="slider pos" />
+        </div>
+        <button id="spApplyBtn">Apply Spring Params</button>
+
+        <pre id="status"></pre>
+      </aside>
+
+      <section class="viewport">
+        <canvas id="scene" width="1100" height="700"></canvas>
+      </section>
+    </main>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.183.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.1/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
