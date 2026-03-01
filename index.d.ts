@@ -143,6 +143,21 @@ export interface AABBHit {
   bodyId: BodyId;
 }
 
+/** Result entry from `castBoxAll` / `castCapsuleAll`. Same shape as `RayCastHit`. */
+export type ShapeCastHit = RayCastHit;
+
+/** Result from `debugDraw`. */
+export interface DebugGeometry {
+  /** Interleaved [x1,y1,z1, x2,y2,z2, ...] line endpoint positions. */
+  lines: Float32Array;
+  /** One ARGB color per line segment. */
+  lineColors: Uint32Array;
+  /** Interleaved [x1,y1,z1, x2,y2,z2, x3,y3,z3, ...] triangle vertex positions. */
+  triangles: Float32Array;
+  /** One ARGB color per triangle. */
+  triangleColors: Uint32Array;
+}
+
 // ─── Event types ──────────────────────────────────────────────────────────────
 
 /** Fired when a body wakes up or goes to sleep. */
@@ -554,6 +569,55 @@ export interface JointInfo {
   parentIndex: number;
 }
 
+// ─── SkeletonPose ─────────────────────────────────────────────────────────────
+
+export interface JointTransform {
+  translation: Vec3;
+  rotation: Quat;
+}
+
+/**
+ * Instance-space pose for a ragdoll skeleton.
+ * Obtained from `ragdoll.createPose()`.
+ * Must be destroyed with `pose.destroy()` when no longer needed.
+ */
+export declare class SkeletonPose {
+  readonly id: number;
+
+  /** Returns the number of joints in the pose (same as skeleton joint count). */
+  getJointCount(): number;
+
+  /**
+   * Set the local-space translation and rotation of the joint at `index`.
+   * @throws If `index` is out of range or pose is destroyed.
+   */
+  setJoint(index: number, translation: Vec3, rotation: Quat): void;
+
+  /**
+   * Returns the local-space `{ translation, rotation }` for joint `index`.
+   * @throws If `index` is out of range or pose is destroyed.
+   */
+  getJoint(index: number): JointTransform;
+
+  /**
+   * Set an extra root offset applied to all joints.
+   * @throws If pose is destroyed.
+   */
+  setRootOffset(position: Vec3): void;
+
+  /** Returns the current root offset. */
+  getRootOffset(): Vec3;
+
+  /**
+   * Convert joint states into joint matrices (world-space).
+   * Call before passing the pose to `ragdoll.setPose()` or using joint matrices.
+   */
+  calculateJointMatrices(): void;
+
+  /** Release the pose and free C++ resources. */
+  destroy(): void;
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 /**
@@ -665,6 +729,86 @@ export declare class Ragdoll {
    * @param bones Array returned by `syncToSkeletonPose`.
    */
   syncFromSkeletonPose(bones: Transform[]): void;
+
+  /**
+   * Create a `SkeletonPose` linked to this ragdoll's skeleton.
+   * Use with `setPose`, `getPose`, `driveToPoseKinematics`, and `driveToPoseMotors`.
+   * @throws If ragdoll is destroyed.
+   */
+  createPose(): SkeletonPose;
+
+  /**
+   * Teleport all ragdoll bodies to match the given pose.
+   * Call `pose.calculateJointMatrices()` first if joint states were modified.
+   */
+  setPose(pose: SkeletonPose, lockBodies?: boolean): void;
+
+  /**
+   * Fill `pose` with the current world-space bone transforms.
+   */
+  getPose(pose: SkeletonPose, lockBodies?: boolean): void;
+
+  /**
+   * Drive each bone toward the pose by setting kinematic velocities.
+   * @param dt Time step in seconds.
+   */
+  driveToPoseKinematics(pose: SkeletonPose, dt: number, lockBodies?: boolean): void;
+
+  /**
+   * Drive the ragdoll toward the pose using constraint motors.
+   */
+  driveToPoseMotors(pose: SkeletonPose): void;
+
+  /** Activate all bodies in the ragdoll. */
+  activate(lockBodies?: boolean): void;
+
+  /** Returns `true` if any body in the ragdoll is active. */
+  isActive(): boolean;
+
+  /** Returns the world-space position and rotation of the root body. */
+  getRootTransform(): Transform;
+
+  /** Returns the world-space AABB enclosing all ragdoll bodies. */
+  getWorldSpaceBounds(): { min: Vec3; max: Vec3 };
+
+  /** Set the collision group ID for all ragdoll bodies. */
+  setGroupID(groupId: number, lockBodies?: boolean): void;
+
+  /**
+   * Reset warm-start impulse data for all constraints.
+   * Call after `setPose` to eliminate previous-frame impulse artifacts.
+   */
+  resetWarmStart(): void;
+
+  /** Set linear velocity for all bodies. */
+  setLinearVelocity(velocity: Vec3, lockBodies?: boolean): void;
+
+  /** Add a linear velocity delta to all bodies. */
+  addLinearVelocity(velocity: Vec3, lockBodies?: boolean): void;
+
+  /** Set both linear and angular velocity for all bodies simultaneously. */
+  setLinearAndAngularVelocity(linearVelocity: Vec3, angularVelocity: Vec3, lockBodies?: boolean): void;
+
+  /** Apply an impulse to all bodies. */
+  addImpulse(impulse: Vec3, lockBodies?: boolean): void;
+
+  /**
+   * Add the ragdoll back into the physics system.
+   * Use after `removeFromPhysicsSystem` to re-enable simulation.
+   */
+  addToPhysicsSystem(activate?: boolean): void;
+
+  /**
+   * Remove all ragdoll bodies and constraints from the physics system
+   * without destroying the ragdoll object.
+   */
+  removeFromPhysicsSystem(): void;
+
+  /**
+   * Stabilize constraint warm-start data (reduces initial jitter).
+   * @returns `true` on success.
+   */
+  stabilize(): boolean;
 
   /**
    * Returns the constraint IDs for each joint (indexed by joint index).
@@ -1051,7 +1195,45 @@ export declare class World {
     maxDistance: number;
     radius: number;
     filter?: QueryFilter;
-  }): RayCastHit[];
+  }): ShapeCastHit[];
+
+  /**
+   * Sweep a box along a ray and return all hits.
+   */
+  castBoxAll(opts: {
+    origin: Vec3;
+    direction: Vec3;
+    maxDistance: number;
+    halfExtents: Vec3;
+    filter?: QueryFilter;
+  }): ShapeCastHit[];
+
+  /**
+   * Sweep a capsule along a ray and return all hits.
+   */
+  castCapsuleAll(opts: {
+    origin: Vec3;
+    direction: Vec3;
+    maxDistance: number;
+    halfHeight: number;
+    radius: number;
+    filter?: QueryFilter;
+  }): ShapeCastHit[];
+
+  // ── Batch API ───────────────────────────────────────────────────────────────
+
+  /**
+   * Create multiple bodies from an array of specs.
+   * Each spec must have a `kind` (or `type`) field: `'sphere'|'box'|'capsule'|'cylinder'|'convexHull'|'mesh'|'heightField'`.
+   * The remaining fields are passed to the corresponding `createXxx` method.
+   * @returns Array of body IDs in the same order as `specs`.
+   */
+  createBodies(specs: Array<{ kind?: string; type?: string; [key: string]: unknown }>): BodyId[];
+
+  /**
+   * Remove multiple bodies from the world.
+   */
+  removeBodies(bodyIds: BodyId[]): void;
 
   // ── Constraints ─────────────────────────────────────────────────────────────
 
@@ -1400,6 +1582,95 @@ export declare class World {
 
   /** Create a new empty `Skeleton` owned by this world. */
   createSkeleton(): Skeleton;
+
+  // ── CharacterVirtual ────────────────────────────────────────────────────────
+
+  /**
+   * Create a virtual character (capsule shape, collision-based movement).
+   * @param opts.halfHeight Half-height of the capsule cylinder. Default: `0.9`.
+   * @param opts.radius     Radius of the capsule. Default: `0.3`.
+   * @param opts.position   Initial world-space position (required).
+   * @param opts.mass       Character mass in kg. Default: `70`.
+   * @param opts.maxStrength Maximum force the character can exert. Default: `100`.
+   * @param opts.maxSlopeAngle Maximum slope angle in degrees the character can walk on. Default: `50`.
+   */
+  createCharacter(opts: {
+    halfHeight?: number;
+    radius?: number;
+    position: Vec3;
+    mass?: number;
+    maxStrength?: number;
+    maxSlopeAngle?: number;
+  }): Character;
+
+  // ── DebugRenderer ───────────────────────────────────────────────────────────
+
+  /**
+   * Collect debug geometry from the physics world.
+   * Requires the native module to have been compiled with `JPH_DEBUG_RENDERER`.
+   */
+  debugDraw(opts?: {
+    bodies?: boolean;
+    constraints?: boolean;
+    constraintLimits?: boolean;
+    wireframe?: boolean;
+  }): DebugGeometry;
+}
+
+// ─── Character ────────────────────────────────────────────────────────────────
+
+/**
+ * A virtual character that uses collision-based movement (no rigid body).
+ * Create via `world.createCharacter()`.
+ */
+export declare class Character {
+  /** Unique character ID within the world. */
+  readonly id: number;
+
+  /**
+   * Advance character simulation by `dt` seconds.
+   * Applies gravity when not on ground, then performs collision detection.
+   * Call once per physics step.
+   */
+  update(dt: number): void;
+
+  /** World-space position of the character base. */
+  getPosition(): Vec3;
+  /** Teleport the character to a new world-space position and refresh contacts. */
+  setPosition(position: Vec3): void;
+
+  /** Current linear velocity in m/s. */
+  getLinearVelocity(): Vec3;
+  /** Set linear velocity (e.g. walking direction + jump impulse). */
+  setLinearVelocity(velocity: Vec3): void;
+
+  /** Rotation quaternion of the character. */
+  getRotation(): Quat;
+  /** Set rotation quaternion. */
+  setRotation(rotation: Quat): void;
+
+  /**
+   * Ground contact state.
+   * - `0` OnGround — walking freely
+   * - `1` OnSteepGround — too steep, sliding
+   * - `2` NotSupported — touching but not supported
+   * - `3` InAir — no contact
+   */
+  getGroundState(): 0 | 1 | 2 | 3;
+  /** `true` when `getGroundState() === 0`. */
+  isOnGround(): boolean;
+  /** `true` when `getGroundState() === 1`. */
+  isOnSteepGround(): boolean;
+  /** `true` when `getGroundState() === 3`. */
+  isInAir(): boolean;
+
+  /** World-space ground contact normal, or `null` if not touching ground. */
+  getGroundNormal(): Vec3 | null;
+  /** Body ID of the ground body, or `null` if in air. */
+  getGroundBodyId(): BodyId | null;
+
+  /** Destroy the character and free its resources. */
+  destroy(): void;
 }
 
 // ─── PhysicsWorker ────────────────────────────────────────────────────────────

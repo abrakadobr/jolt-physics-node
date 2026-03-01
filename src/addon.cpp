@@ -45,9 +45,14 @@
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Ragdoll/Ragdoll.h>
 #include <Jolt/Skeleton/Skeleton.h>
+#include <Jolt/Skeleton/SkeletonPose.h>
 #include <Jolt/Physics/PhysicsScene.h>
 #include <Jolt/Core/StreamWrapper.h>
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
+#ifdef JPH_DEBUG_RENDERER
+#include <Jolt/Renderer/DebugRenderer.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -526,6 +531,69 @@ static uint32_t GetHitMaterialIndex(const Body &body, const SubShapeID &sub_shap
   return static_cast<const IndexedMaterial *>(mat)->mIndex;
 }
 
+#ifdef JPH_DEBUG_RENDERER
+class CollectingDebugRenderer : public DebugRenderer {
+ public:
+  CollectingDebugRenderer() { Initialize(); }
+  struct LineV  { float x1,y1,z1,x2,y2,z2; uint32_t color; };
+  struct TriV   { float x1,y1,z1,x2,y2,z2,x3,y3,z3; uint32_t color; };
+  std::vector<LineV> lines;
+  std::vector<TriV>  tris;
+  void Clear() { lines.clear(); tris.clear(); }
+
+  void DrawLine(RVec3Arg from, RVec3Arg to, ColorArg c) override {
+    lines.push_back({(float)from.GetX(),(float)from.GetY(),(float)from.GetZ(),
+                     (float)to.GetX(),(float)to.GetY(),(float)to.GetZ(), c.GetUInt32()});
+  }
+  void DrawTriangle(RVec3Arg v1, RVec3Arg v2, RVec3Arg v3, ColorArg c, ECastShadow) override {
+    tris.push_back({(float)v1.GetX(),(float)v1.GetY(),(float)v1.GetZ(),
+                    (float)v2.GetX(),(float)v2.GetY(),(float)v2.GetZ(),
+                    (float)v3.GetX(),(float)v3.GetY(),(float)v3.GetZ(), c.GetUInt32()});
+  }
+  void DrawText3D(RVec3Arg, const string_view &, ColorArg, float) override {}
+
+  class BatchImpl : public RefTargetVirtual {
+   public:
+    std::vector<Triangle> mTriangles;
+    std::atomic_int mRefCount{0};
+    BatchImpl(const Triangle *t, int n) : mTriangles(t, t+n) {}
+    void AddRef() override { ++mRefCount; }
+    void Release() override { if (--mRefCount == 0) delete this; }
+  };
+
+  Batch CreateTriangleBatch(const Triangle *t, int n) override { return new BatchImpl(t,n); }
+  Batch CreateTriangleBatch(const Vertex *v, int, const uint32_t *idx, int ic) override {
+    std::vector<Triangle> out; out.reserve(ic/3);
+    for (int k=0; k+2<ic; k+=3) {
+      Triangle tri;
+      for (int j=0; j<3; j++) {
+        auto &s=v[idx[k+j]];
+        tri.mV[j].mPosition=Float3(s.mPosition.x,s.mPosition.y,s.mPosition.z);
+        tri.mV[j].mNormal=Float3(s.mNormal.x,s.mNormal.y,s.mNormal.z);
+        tri.mV[j].mColor=s.mColor; tri.mV[j].mUV=Float2(s.mUV.x,s.mUV.y);
+      }
+      out.push_back(tri);
+    }
+    return new BatchImpl(out.data(),(int)out.size());
+  }
+  void DrawGeometry(RMat44Arg mat, const AABox &, float, ColorArg color,
+                    const GeometryRef &geom, ECullMode, ECastShadow, EDrawMode) override {
+    if (!geom || geom->mLODs.empty()) return;
+    const auto *impl=static_cast<const BatchImpl*>(geom->mLODs[0].mTriangleBatch.GetPtr());
+    if (!impl) return;
+    const uint32_t c=color.GetUInt32();
+    for (const Triangle &tri : impl->mTriangles) {
+      RVec3 v1=mat*Vec3(tri.mV[0].mPosition.x,tri.mV[0].mPosition.y,tri.mV[0].mPosition.z);
+      RVec3 v2=mat*Vec3(tri.mV[1].mPosition.x,tri.mV[1].mPosition.y,tri.mV[1].mPosition.z);
+      RVec3 v3=mat*Vec3(tri.mV[2].mPosition.x,tri.mV[2].mPosition.y,tri.mV[2].mPosition.z);
+      tris.push_back({(float)v1.GetX(),(float)v1.GetY(),(float)v1.GetZ(),
+                      (float)v2.GetX(),(float)v2.GetY(),(float)v2.GetZ(),
+                      (float)v3.GetX(),(float)v3.GetY(),(float)v3.GetZ(),c});
+    }
+  }
+};
+#endif
+
 class PhysicsWorld {
  public:
   enum class PendingEventType { BodyActivated, BodyDeactivated, ContactAdded, ContactPersisted, ContactRemoved };
@@ -639,6 +707,9 @@ class PhysicsWorld {
 
     // Release mutable compound shape refs explicitly before PhysicsSystem tears down.
     mMutableCompounds.clear();
+
+    // CharacterVirtual instances hold a pointer to mPhysicsSystem; destroy before teardown.
+    mCharacters.clear();
 
     if (mEnv != nullptr) {
       if (mBodyActivationCallbackRef != nullptr) napi_delete_reference(mEnv, mBodyActivationCallbackRef);
@@ -1230,6 +1301,72 @@ class PhysicsWorld {
     const Vec3 dir = direction.NormalizedOr(Vec3::sAxisX()) * max_dist;
     SphereShape sphere(radius);
     RShapeCast cast(&sphere, Vec3::sReplicate(1.0f), RMat44::sTranslation(origin), dir);
+    ShapeCastSettings settings;
+    settings.mReturnDeepestPoint = true;
+    MaskObjectLayerFilter layer_filter(filters.layer_mask);
+    IgnoreMultipleBodiesFilter body_filter;
+    body_filter.Reserve(static_cast<uint>(filters.exclude_ids.size()));
+    for (uint32_t id : filters.exclude_ids) body_filter.IgnoreBody(BodyID(id));
+
+    AllHitCollisionCollector<CastShapeCollector> collector;
+    mPhysicsSystem.GetNarrowPhaseQuery().CastShape(cast, settings, RVec3::sZero(), collector, {}, layer_filter, body_filter);
+    if (!collector.HadHit()) return false;
+
+    collector.Sort();
+    out_hits.clear();
+    out_hits.reserve(collector.mHits.size());
+    for (const ShapeCastResult &hit : collector.mHits) {
+      const Vec3 normal = -hit.mPenetrationAxis.NormalizedOr(Vec3::sAxisY());
+      uint32_t mat_index = 0;
+      {
+        const BodyLockRead lock(mPhysicsSystem.GetBodyLockInterface(), hit.mBodyID2);
+        if (lock.Succeeded())
+          mat_index = GetHitMaterialIndex(lock.GetBody(), hit.mSubShapeID2);
+      }
+      out_hits.push_back({hit.mBodyID2.GetIndexAndSequenceNumber(), hit.mFraction, hit.mPenetrationDepth, hit.mContactPointOn2, normal, mat_index});
+    }
+    return true;
+  }
+
+  bool CastBoxAll(RVec3Arg origin, Vec3Arg direction, float max_dist,
+                  float hx, float hy, float hz,
+                  const QueryFilters &filters, std::vector<ShapeQueryHit> &out_hits) const {
+    const Vec3 dir = direction.NormalizedOr(Vec3::sAxisX()) * max_dist;
+    BoxShape box(Vec3(hx, hy, hz));
+    RShapeCast cast(&box, Vec3::sReplicate(1.0f), RMat44::sTranslation(origin), dir);
+    ShapeCastSettings settings;
+    settings.mReturnDeepestPoint = true;
+    MaskObjectLayerFilter layer_filter(filters.layer_mask);
+    IgnoreMultipleBodiesFilter body_filter;
+    body_filter.Reserve(static_cast<uint>(filters.exclude_ids.size()));
+    for (uint32_t id : filters.exclude_ids) body_filter.IgnoreBody(BodyID(id));
+
+    AllHitCollisionCollector<CastShapeCollector> collector;
+    mPhysicsSystem.GetNarrowPhaseQuery().CastShape(cast, settings, RVec3::sZero(), collector, {}, layer_filter, body_filter);
+    if (!collector.HadHit()) return false;
+
+    collector.Sort();
+    out_hits.clear();
+    out_hits.reserve(collector.mHits.size());
+    for (const ShapeCastResult &hit : collector.mHits) {
+      const Vec3 normal = -hit.mPenetrationAxis.NormalizedOr(Vec3::sAxisY());
+      uint32_t mat_index = 0;
+      {
+        const BodyLockRead lock(mPhysicsSystem.GetBodyLockInterface(), hit.mBodyID2);
+        if (lock.Succeeded())
+          mat_index = GetHitMaterialIndex(lock.GetBody(), hit.mSubShapeID2);
+      }
+      out_hits.push_back({hit.mBodyID2.GetIndexAndSequenceNumber(), hit.mFraction, hit.mPenetrationDepth, hit.mContactPointOn2, normal, mat_index});
+    }
+    return true;
+  }
+
+  bool CastCapsuleAll(RVec3Arg origin, Vec3Arg direction, float max_dist,
+                      float half_height, float radius,
+                      const QueryFilters &filters, std::vector<ShapeQueryHit> &out_hits) const {
+    const Vec3 dir = direction.NormalizedOr(Vec3::sAxisX()) * max_dist;
+    CapsuleShape capsule(half_height, radius);
+    RShapeCast cast(&capsule, Vec3::sReplicate(1.0f), RMat44::sTranslation(origin), dir);
     ShapeCastSettings settings;
     settings.mReturnDeepestPoint = true;
     MaskObjectLayerFilter layer_filter(filters.layer_mask);
@@ -2404,6 +2541,200 @@ class PhysicsWorld {
     return true;
   }
 
+  // --- SkeletonPose ---
+
+  uint32_t CreateSkeletonPose(uint32_t ragdoll_id) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return 0;
+    auto pose = std::make_unique<SkeletonPose>();
+    pose->SetSkeleton(it->second->GetRagdollSettings()->GetSkeleton());
+    const uint32_t id = mNextSkeletonPoseId++;
+    mSkeletonPoses[id] = std::move(pose);
+    return id;
+  }
+
+  bool DestroySkeletonPose(uint32_t pose_id) {
+    return mSkeletonPoses.erase(pose_id) > 0;
+  }
+
+  bool SetPoseJoint(uint32_t pose_id, int ji, float tx, float ty, float tz,
+                    float rx, float ry, float rz, float rw) {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return false;
+    if (ji < 0 || ji >= (int)it->second->GetJointCount()) return false;
+    auto &j = it->second->GetJoint(ji);
+    j.mTranslation = Vec3(tx, ty, tz);
+    j.mRotation = Quat(rx, ry, rz, rw);
+    return true;
+  }
+
+  bool GetPoseJoint(uint32_t pose_id, int ji, Vec3 &out_t, Quat &out_r) const {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return false;
+    if (ji < 0 || ji >= (int)it->second->GetJointCount()) return false;
+    const auto &j = it->second->GetJoint(ji);
+    out_t = j.mTranslation;
+    out_r = j.mRotation;
+    return true;
+  }
+
+  bool SetPoseRootOffset(uint32_t pose_id, double x, double y, double z) {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return false;
+    it->second->SetRootOffset(RVec3(x, y, z));
+    return true;
+  }
+
+  bool GetPoseRootOffset(uint32_t pose_id, RVec3 &out) const {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return false;
+    out = it->second->GetRootOffset();
+    return true;
+  }
+
+  bool CalculatePoseJointMatrices(uint32_t pose_id) {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return false;
+    it->second->CalculateJointMatrices();
+    return true;
+  }
+
+  int GetPoseJointCount(uint32_t pose_id) const {
+    auto it = mSkeletonPoses.find(pose_id);
+    if (it == mSkeletonPoses.end()) return -1;
+    return (int)it->second->GetJointCount();
+  }
+
+  // --- Extended Ragdoll API ---
+
+  bool RagdollSetPose(uint32_t ragdoll_id, uint32_t pose_id, bool lock_bodies) {
+    auto ri = mRagdolls.find(ragdoll_id);
+    if (ri == mRagdolls.end()) return false;
+    auto pi = mSkeletonPoses.find(pose_id);
+    if (pi == mSkeletonPoses.end()) return false;
+    ri->second->SetPose(*pi->second, lock_bodies);
+    return true;
+  }
+
+  bool RagdollGetPose(uint32_t ragdoll_id, uint32_t pose_id, bool lock_bodies) {
+    auto ri = mRagdolls.find(ragdoll_id);
+    if (ri == mRagdolls.end()) return false;
+    auto pi = mSkeletonPoses.find(pose_id);
+    if (pi == mSkeletonPoses.end()) return false;
+    ri->second->GetPose(*pi->second, lock_bodies);
+    return true;
+  }
+
+  bool RagdollDriveToPoseKinematics(uint32_t ragdoll_id, uint32_t pose_id, float dt, bool lock_bodies) {
+    auto ri = mRagdolls.find(ragdoll_id);
+    if (ri == mRagdolls.end()) return false;
+    auto pi = mSkeletonPoses.find(pose_id);
+    if (pi == mSkeletonPoses.end()) return false;
+    ri->second->DriveToPoseUsingKinematics(*pi->second, dt, lock_bodies);
+    return true;
+  }
+
+  bool RagdollDriveToPoseMotors(uint32_t ragdoll_id, uint32_t pose_id) {
+    auto ri = mRagdolls.find(ragdoll_id);
+    if (ri == mRagdolls.end()) return false;
+    auto pi = mSkeletonPoses.find(pose_id);
+    if (pi == mSkeletonPoses.end()) return false;
+    ri->second->DriveToPoseUsingMotors(*pi->second);
+    return true;
+  }
+
+  bool RagdollActivate(uint32_t ragdoll_id, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->Activate(lock_bodies);
+    return true;
+  }
+
+  int RagdollIsActive(uint32_t ragdoll_id) const {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return -1;
+    return it->second->IsActive() ? 1 : 0;
+  }
+
+  bool RagdollGetRootTransform(uint32_t ragdoll_id, RVec3 &out_pos, Quat &out_rot) const {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->GetRootTransform(out_pos, out_rot);
+    return true;
+  }
+
+  bool RagdollGetWorldSpaceBounds(uint32_t ragdoll_id, Vec3 &out_min, Vec3 &out_max) const {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    AABox box = it->second->GetWorldSpaceBounds();
+    out_min = box.mMin;
+    out_max = box.mMax;
+    return true;
+  }
+
+  bool RagdollSetGroupID(uint32_t ragdoll_id, uint32_t group_id, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->SetGroupID(static_cast<CollisionGroup::GroupID>(group_id), lock_bodies);
+    return true;
+  }
+
+  bool RagdollResetWarmStart(uint32_t ragdoll_id) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->ResetWarmStart();
+    return true;
+  }
+
+  bool RagdollSetLinearVelocity(uint32_t ragdoll_id, float vx, float vy, float vz, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->SetLinearVelocity(Vec3(vx, vy, vz), lock_bodies);
+    return true;
+  }
+
+  bool RagdollAddLinearVelocity(uint32_t ragdoll_id, float vx, float vy, float vz, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->AddLinearVelocity(Vec3(vx, vy, vz), lock_bodies);
+    return true;
+  }
+
+  bool RagdollSetLinearAndAngularVelocity(uint32_t ragdoll_id,
+      float lvx, float lvy, float lvz, float avx, float avy, float avz, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->SetLinearAndAngularVelocity(Vec3(lvx, lvy, lvz), Vec3(avx, avy, avz), lock_bodies);
+    return true;
+  }
+
+  bool RagdollAddImpulse(uint32_t ragdoll_id, float ix, float iy, float iz, bool lock_bodies) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->AddImpulse(Vec3(ix, iy, iz), lock_bodies);
+    return true;
+  }
+
+  bool RagdollAddToPhysicsSystem(uint32_t ragdoll_id, bool activate) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->AddToPhysicsSystem(activate ? EActivation::Activate : EActivation::DontActivate);
+    return true;
+  }
+
+  bool RagdollRemoveFromPhysicsSystem(uint32_t ragdoll_id) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    it->second->RemoveFromPhysicsSystem();
+    return true;
+  }
+
+  bool RagdollStabilize(uint32_t ragdoll_id) {
+    auto it = mRagdolls.find(ragdoll_id);
+    if (it == mRagdolls.end()) return false;
+    return const_cast<RagdollSettings *>(it->second->GetRagdollSettings())->Stabilize();
+  }
+
   // --- Serialization ---
 
   // Compact state snapshot (56 bytes/body).
@@ -2480,6 +2811,141 @@ class PhysicsWorld {
     if (!scene->CreateBodies(&mPhysicsSystem)) return -1;
     return (int)scene->GetNumBodies();
   }
+
+  // ── CharacterVirtual ──────────────────────────────────────────────────────
+
+  uint32_t CreateCharacter(float half_height, float radius, double x, double y, double z,
+                           float mass, float max_strength, float max_slope_angle) {
+    CapsuleShapeSettings cs(half_height, radius);
+    auto cr = cs.Create();
+    if (cr.HasError()) return 0;
+    CharacterVirtualSettings settings;
+    settings.mMass = mass;
+    settings.mMaxStrength = max_strength;
+    settings.mMaxSlopeAngle = max_slope_angle;
+    settings.mShape = cr.Get();
+    settings.mSupportingVolume = Plane(Vec3::sAxisY(), -radius);
+    const uint32_t id = mNextCharacterId++;
+    mCharacters[id] = std::make_unique<CharacterVirtual>(
+        &settings, RVec3(x, y, z), Quat::sIdentity(), 0, &mPhysicsSystem);
+    return id;
+  }
+
+  bool DestroyCharacter(uint32_t id) { return mCharacters.erase(id) > 0; }
+
+  bool CharacterUpdate(uint32_t id, float dt) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    CharacterVirtual *ch = it->second.get();
+    Vec3 gravity = mPhysicsSystem.GetGravity();
+    if (ch->GetGroundState() != CharacterBase::EGroundState::OnGround)
+      ch->SetLinearVelocity(ch->GetLinearVelocity() + gravity * dt);
+    DefaultBroadPhaseLayerFilter bp_filter(mObjectVsBroadPhaseLayerFilter, Layers::MOVING);
+    DefaultObjectLayerFilter obj_filter(mObjectLayerPairFilter, Layers::MOVING);
+    BodyFilter body_filter;
+    ShapeFilter shape_filter;
+    ch->Update(dt, gravity, bp_filter, obj_filter, body_filter, shape_filter, mTempAllocator);
+    return true;
+  }
+
+  bool SetCharacterLinearVelocity(uint32_t id, float vx, float vy, float vz) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    it->second->SetLinearVelocity(Vec3(vx, vy, vz));
+    return true;
+  }
+
+  bool GetCharacterLinearVelocity(uint32_t id, Vec3 &out) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    out = it->second->GetLinearVelocity();
+    return true;
+  }
+
+  bool SetCharacterPosition(uint32_t id, double x, double y, double z) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    it->second->SetPosition(RVec3(x, y, z));
+    DefaultBroadPhaseLayerFilter bp_filter(mObjectVsBroadPhaseLayerFilter, Layers::MOVING);
+    DefaultObjectLayerFilter obj_filter(mObjectLayerPairFilter, Layers::MOVING);
+    BodyFilter body_filter;
+    ShapeFilter shape_filter;
+    it->second->RefreshContacts(bp_filter, obj_filter, body_filter, shape_filter, mTempAllocator);
+    return true;
+  }
+
+  bool GetCharacterPosition(uint32_t id, RVec3 &out) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    out = it->second->GetPosition();
+    return true;
+  }
+
+  bool SetCharacterRotation(uint32_t id, float rx, float ry, float rz, float rw) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    it->second->SetRotation(Quat(rx, ry, rz, rw));
+    return true;
+  }
+
+  bool GetCharacterRotation(uint32_t id, Quat &out) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    out = it->second->GetRotation();
+    return true;
+  }
+
+  int GetCharacterGroundState(uint32_t id) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return -1;
+    return static_cast<int>(it->second->GetGroundState());
+  }
+
+  bool GetCharacterGroundNormal(uint32_t id, Vec3 &out) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return false;
+    out = it->second->GetGroundNormal();
+    return true;
+  }
+
+  uint32_t GetCharacterGroundBodyId(uint32_t id) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) return 0;
+    const BodyID bid = it->second->GetGroundBodyID();
+    return bid.IsInvalid() ? 0 : bid.GetIndexAndSequenceNumber();
+  }
+
+#ifdef JPH_DEBUG_RENDERER
+  // ── DebugRenderer ─────────────────────────────────────────────────────────
+
+  struct DebugGeoResult {
+    std::vector<float>    linePos, triPos;
+    std::vector<uint32_t> lineCol, triCol;
+  };
+
+  DebugGeoResult GetDebugGeometry(bool draw_bodies, bool draw_constraints,
+                                   bool draw_constraint_limits, bool wireframe) {
+    CollectingDebugRenderer r;
+    if (draw_bodies) {
+      BodyManager::DrawSettings s;
+      s.mDrawShape = true;
+      s.mDrawShapeWireframe = wireframe;
+      mPhysicsSystem.DrawBodies(s, &r);
+    }
+    if (draw_constraints) mPhysicsSystem.DrawConstraints(&r);
+    if (draw_constraint_limits) mPhysicsSystem.DrawConstraintLimits(&r);
+    DebugGeoResult out;
+    for (const auto &l : r.lines) {
+      out.linePos.insert(out.linePos.end(), {l.x1,l.y1,l.z1,l.x2,l.y2,l.z2});
+      out.lineCol.push_back(l.color);
+    }
+    for (const auto &t : r.tris) {
+      out.triPos.insert(out.triPos.end(), {t.x1,t.y1,t.z1,t.x2,t.y2,t.z2,t.x3,t.y3,t.z3});
+      out.triCol.push_back(t.color);
+    }
+    return out;
+  }
+#endif
 
  private:
   template <class T>
@@ -2628,7 +3094,13 @@ class PhysicsWorld {
   std::unordered_map<uint32_t, Ref<Ragdoll>> mRagdolls;
   std::unordered_map<uint32_t, std::vector<uint32_t>> mRagdollConstraintIds;
 
+  uint32_t mNextSkeletonPoseId = 1;
+  std::unordered_map<uint32_t, std::unique_ptr<SkeletonPose>> mSkeletonPoses;
+
   std::unordered_map<uint32_t, Ref<MutableCompoundShape>> mMutableCompounds;
+
+  uint32_t mNextCharacterId = 1;
+  std::unordered_map<uint32_t, std::unique_ptr<CharacterVirtual>> mCharacters;
 };
 
 struct WorldHandle {
@@ -3826,6 +4298,102 @@ napi_value CastSphereAll(napi_env env, napi_callback_info info) {
           static_cast<float>(radius),
           filters,
           hits)) {
+    napi_value arr;
+    napi_create_array_with_length(env, 0, &arr);
+    return arr;
+  }
+
+  napi_value arr;
+  napi_create_array_with_length(env, hits.size(), &arr);
+  for (size_t i = 0; i < hits.size(); ++i) {
+    napi_value item;
+    napi_create_object(env, &item);
+    napi_value body_v, penetration_v, fraction_v, mat_v;
+    napi_create_uint32(env, hits[i].body_id, &body_v);
+    napi_create_double(env, hits[i].penetration_depth, &penetration_v);
+    napi_create_double(env, hits[i].fraction, &fraction_v);
+    napi_create_uint32(env, hits[i].material_index, &mat_v);
+    napi_set_named_property(env, item, "bodyId", body_v);
+    napi_set_named_property(env, item, "penetrationDepth", penetration_v);
+    napi_set_named_property(env, item, "fraction", fraction_v);
+    napi_set_named_property(env, item, "point", MakeVec3Object(env, RVec3(hits[i].point.GetX(), hits[i].point.GetY(), hits[i].point.GetZ())));
+    napi_set_named_property(env, item, "normal", MakeVec3Object(env, RVec3(hits[i].normal.GetX(), hits[i].normal.GetY(), hits[i].normal.GetZ())));
+    napi_set_named_property(env, item, "materialIndex", mat_v);
+    napi_set_element(env, arr, static_cast<uint32_t>(i), item);
+  }
+  return arr;
+}
+
+napi_value CastBoxAll(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(11, 12)
+  double ox, oy, oz, dx, dy, dz, max_dist, hx, hy, hz;
+  if (!GetDoubleArg(env, args[1], &ox) || !GetDoubleArg(env, args[2], &oy) || !GetDoubleArg(env, args[3], &oz) ||
+      !GetDoubleArg(env, args[4], &dx) || !GetDoubleArg(env, args[5], &dy) || !GetDoubleArg(env, args[6], &dz) ||
+      !GetDoubleArg(env, args[7], &max_dist) || max_dist <= 0.0 ||
+      !GetDoubleArg(env, args[8], &hx) || hx <= 0.0 ||
+      !GetDoubleArg(env, args[9], &hy) || hy <= 0.0 ||
+      !GetDoubleArg(env, args[10], &hz) || hz <= 0.0) {
+    ThrowTypeError(env, "castBoxAll: invalid args");
+    return nullptr;
+  }
+  QueryFilters filters;
+  if (argc > 11) ParseQueryFilters(env, args[11], filters);
+
+  std::vector<PhysicsWorld::ShapeQueryHit> hits;
+  if (!handle->world->CastBoxAll(
+          RVec3(ox, oy, oz),
+          Vec3(static_cast<float>(dx), static_cast<float>(dy), static_cast<float>(dz)),
+          static_cast<float>(max_dist),
+          static_cast<float>(hx), static_cast<float>(hy), static_cast<float>(hz),
+          filters, hits)) {
+    napi_value arr;
+    napi_create_array_with_length(env, 0, &arr);
+    return arr;
+  }
+
+  napi_value arr;
+  napi_create_array_with_length(env, hits.size(), &arr);
+  for (size_t i = 0; i < hits.size(); ++i) {
+    napi_value item;
+    napi_create_object(env, &item);
+    napi_value body_v, penetration_v, fraction_v, mat_v;
+    napi_create_uint32(env, hits[i].body_id, &body_v);
+    napi_create_double(env, hits[i].penetration_depth, &penetration_v);
+    napi_create_double(env, hits[i].fraction, &fraction_v);
+    napi_create_uint32(env, hits[i].material_index, &mat_v);
+    napi_set_named_property(env, item, "bodyId", body_v);
+    napi_set_named_property(env, item, "penetrationDepth", penetration_v);
+    napi_set_named_property(env, item, "fraction", fraction_v);
+    napi_set_named_property(env, item, "point", MakeVec3Object(env, RVec3(hits[i].point.GetX(), hits[i].point.GetY(), hits[i].point.GetZ())));
+    napi_set_named_property(env, item, "normal", MakeVec3Object(env, RVec3(hits[i].normal.GetX(), hits[i].normal.GetY(), hits[i].normal.GetZ())));
+    napi_set_named_property(env, item, "materialIndex", mat_v);
+    napi_set_element(env, arr, static_cast<uint32_t>(i), item);
+  }
+  return arr;
+}
+
+napi_value CastCapsuleAll(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(10, 11)
+  double ox, oy, oz, dx, dy, dz, max_dist, half_height, radius;
+  if (!GetDoubleArg(env, args[1], &ox) || !GetDoubleArg(env, args[2], &oy) || !GetDoubleArg(env, args[3], &oz) ||
+      !GetDoubleArg(env, args[4], &dx) || !GetDoubleArg(env, args[5], &dy) || !GetDoubleArg(env, args[6], &dz) ||
+      !GetDoubleArg(env, args[7], &max_dist) || max_dist <= 0.0 ||
+      !GetDoubleArg(env, args[8], &half_height) || half_height <= 0.0 ||
+      !GetDoubleArg(env, args[9], &radius) || radius <= 0.0) {
+    ThrowTypeError(env, "castCapsuleAll: invalid args");
+    return nullptr;
+  }
+  QueryFilters filters;
+  if (argc > 10) ParseQueryFilters(env, args[10], filters);
+
+  std::vector<PhysicsWorld::ShapeQueryHit> hits;
+  if (!handle->world->CastCapsuleAll(
+          RVec3(ox, oy, oz),
+          Vec3(static_cast<float>(dx), static_cast<float>(dy), static_cast<float>(dz)),
+          static_cast<float>(max_dist),
+          static_cast<float>(half_height),
+          static_cast<float>(radius),
+          filters, hits)) {
     napi_value arr;
     napi_create_array_with_length(env, 0, &arr);
     return arr;
@@ -5799,6 +6367,360 @@ napi_value GetRagdollConstraintIds(napi_env env, napi_callback_info info) {
   return arr;
 }
 
+// --- SkeletonPose NAPI ---
+
+napi_value CreateSkeletonPose(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "createSkeletonPose: expected ragdoll id"); return nullptr;
+  }
+  uint32_t id = handle->world->CreateSkeletonPose(ragdoll_id);
+  napi_value result;
+  napi_create_uint32(env, id, &result);
+  return result;
+}
+
+napi_value DestroySkeletonPose(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t pose_id;
+  if (!GetUInt32Arg(env, args[1], &pose_id)) {
+    ThrowTypeError(env, "destroySkeletonPose: expected pose id"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->DestroySkeletonPose(pose_id), &result);
+  return result;
+}
+
+napi_value SetPoseJoint(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(10)
+  uint32_t pose_id; int32_t ji;
+  double tx, ty, tz, rx, ry, rz, rw;
+  if (!GetUInt32Arg(env, args[1], &pose_id) || !GetInt32Arg(env, args[2], &ji) ||
+      !GetDoubleArg(env, args[3], &tx) || !GetDoubleArg(env, args[4], &ty) ||
+      !GetDoubleArg(env, args[5], &tz) || !GetDoubleArg(env, args[6], &rx) ||
+      !GetDoubleArg(env, args[7], &ry) || !GetDoubleArg(env, args[8], &rz) ||
+      !GetDoubleArg(env, args[9], &rw)) {
+    ThrowTypeError(env, "setPoseJoint: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->SetPoseJoint(pose_id, ji,
+    (float)tx, (float)ty, (float)tz, (float)rx, (float)ry, (float)rz, (float)rw), &result);
+  return result;
+}
+
+napi_value GetPoseJoint(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(3)
+  uint32_t pose_id; int32_t ji;
+  if (!GetUInt32Arg(env, args[1], &pose_id) || !GetInt32Arg(env, args[2], &ji)) {
+    ThrowTypeError(env, "getPoseJoint: invalid args"); return nullptr;
+  }
+  Vec3 t; Quat r;
+  if (!handle->world->GetPoseJoint(pose_id, ji, t, r)) return nullptr;
+  napi_value obj, trans, rot;
+  napi_create_object(env, &obj);
+  napi_create_object(env, &trans);
+  napi_create_object(env, &rot);
+  SetF64Prop(env, trans, "x", t.GetX()); SetF64Prop(env, trans, "y", t.GetY()); SetF64Prop(env, trans, "z", t.GetZ());
+  SetF64Prop(env, rot, "x", r.GetX()); SetF64Prop(env, rot, "y", r.GetY()); SetF64Prop(env, rot, "z", r.GetZ()); SetF64Prop(env, rot, "w", r.GetW());
+  napi_set_named_property(env, obj, "translation", trans);
+  napi_set_named_property(env, obj, "rotation", rot);
+  return obj;
+}
+
+napi_value SetPoseRootOffset(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(5)
+  uint32_t pose_id;
+  double x, y, z;
+  if (!GetUInt32Arg(env, args[1], &pose_id) ||
+      !GetDoubleArg(env, args[2], &x) || !GetDoubleArg(env, args[3], &y) ||
+      !GetDoubleArg(env, args[4], &z)) {
+    ThrowTypeError(env, "setPoseRootOffset: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->SetPoseRootOffset(pose_id, x, y, z), &result);
+  return result;
+}
+
+napi_value GetPoseRootOffset(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t pose_id;
+  if (!GetUInt32Arg(env, args[1], &pose_id)) {
+    ThrowTypeError(env, "getPoseRootOffset: invalid args"); return nullptr;
+  }
+  RVec3 out;
+  if (!handle->world->GetPoseRootOffset(pose_id, out)) return nullptr;
+  napi_value obj;
+  napi_create_object(env, &obj);
+  SetF64Prop(env, obj, "x", (double)out.GetX());
+  SetF64Prop(env, obj, "y", (double)out.GetY());
+  SetF64Prop(env, obj, "z", (double)out.GetZ());
+  return obj;
+}
+
+napi_value CalculatePoseJointMatrices(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t pose_id;
+  if (!GetUInt32Arg(env, args[1], &pose_id)) {
+    ThrowTypeError(env, "calculatePoseJointMatrices: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->CalculatePoseJointMatrices(pose_id), &result);
+  return result;
+}
+
+napi_value GetPoseJointCount(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t pose_id;
+  if (!GetUInt32Arg(env, args[1], &pose_id)) {
+    ThrowTypeError(env, "getPoseJointCount: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_create_int32(env, handle->world->GetPoseJointCount(pose_id), &result);
+  return result;
+}
+
+// --- Extended Ragdoll NAPI ---
+
+napi_value RagdollSetPose(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(3, 4)
+  uint32_t ragdoll_id, pose_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) || !GetUInt32Arg(env, args[2], &pose_id)) {
+    ThrowTypeError(env, "ragdollSetPose: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 4) { bool b; if (GetBoolArg(env, args[3], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollSetPose(ragdoll_id, pose_id, lock), &result);
+  return result;
+}
+
+napi_value RagdollGetPose(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(3, 4)
+  uint32_t ragdoll_id, pose_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) || !GetUInt32Arg(env, args[2], &pose_id)) {
+    ThrowTypeError(env, "ragdollGetPose: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 4) { bool b; if (GetBoolArg(env, args[3], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollGetPose(ragdoll_id, pose_id, lock), &result);
+  return result;
+}
+
+napi_value RagdollDriveToPoseKinematics(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(4, 5)
+  uint32_t ragdoll_id, pose_id;
+  double dt;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) || !GetUInt32Arg(env, args[2], &pose_id) ||
+      !GetDoubleArg(env, args[3], &dt)) {
+    ThrowTypeError(env, "ragdollDriveToPoseKinematics: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 5) { bool b; if (GetBoolArg(env, args[4], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollDriveToPoseKinematics(ragdoll_id, pose_id, (float)dt, lock), &result);
+  return result;
+}
+
+napi_value RagdollDriveToPoseMotors(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(3)
+  uint32_t ragdoll_id, pose_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) || !GetUInt32Arg(env, args[2], &pose_id)) {
+    ThrowTypeError(env, "ragdollDriveToPoseMotors: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollDriveToPoseMotors(ragdoll_id, pose_id), &result);
+  return result;
+}
+
+napi_value RagdollActivate(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(2, 3)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollActivate: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 3) { bool b; if (GetBoolArg(env, args[2], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollActivate(ragdoll_id, lock), &result);
+  return result;
+}
+
+napi_value RagdollIsActive(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollIsActive: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_create_int32(env, handle->world->RagdollIsActive(ragdoll_id), &result);
+  return result;
+}
+
+napi_value RagdollGetRootTransform(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollGetRootTransform: invalid args"); return nullptr;
+  }
+  RVec3 pos; Quat rot;
+  if (!handle->world->RagdollGetRootTransform(ragdoll_id, pos, rot)) return nullptr;
+  napi_value obj, pobj, robj;
+  napi_create_object(env, &obj);
+  napi_create_object(env, &pobj);
+  napi_create_object(env, &robj);
+  SetF64Prop(env, pobj, "x", (double)pos.GetX()); SetF64Prop(env, pobj, "y", (double)pos.GetY()); SetF64Prop(env, pobj, "z", (double)pos.GetZ());
+  SetF64Prop(env, robj, "x", rot.GetX()); SetF64Prop(env, robj, "y", rot.GetY()); SetF64Prop(env, robj, "z", rot.GetZ()); SetF64Prop(env, robj, "w", rot.GetW());
+  napi_set_named_property(env, obj, "position", pobj);
+  napi_set_named_property(env, obj, "rotation", robj);
+  return obj;
+}
+
+napi_value RagdollGetWorldSpaceBounds(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollGetWorldSpaceBounds: invalid args"); return nullptr;
+  }
+  Vec3 bmin, bmax;
+  if (!handle->world->RagdollGetWorldSpaceBounds(ragdoll_id, bmin, bmax)) return nullptr;
+  napi_value obj, minobj, maxobj;
+  napi_create_object(env, &obj);
+  napi_create_object(env, &minobj);
+  napi_create_object(env, &maxobj);
+  SetF64Prop(env, minobj, "x", bmin.GetX()); SetF64Prop(env, minobj, "y", bmin.GetY()); SetF64Prop(env, minobj, "z", bmin.GetZ());
+  SetF64Prop(env, maxobj, "x", bmax.GetX()); SetF64Prop(env, maxobj, "y", bmax.GetY()); SetF64Prop(env, maxobj, "z", bmax.GetZ());
+  napi_set_named_property(env, obj, "min", minobj);
+  napi_set_named_property(env, obj, "max", maxobj);
+  return obj;
+}
+
+napi_value RagdollSetGroupID(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(3, 4)
+  uint32_t ragdoll_id, group_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) || !GetUInt32Arg(env, args[2], &group_id)) {
+    ThrowTypeError(env, "ragdollSetGroupID: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 4) { bool b; if (GetBoolArg(env, args[3], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollSetGroupID(ragdoll_id, group_id, lock), &result);
+  return result;
+}
+
+napi_value RagdollResetWarmStart(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollResetWarmStart: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollResetWarmStart(ragdoll_id), &result);
+  return result;
+}
+
+napi_value RagdollSetLinearVelocity(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(5, 6)
+  uint32_t ragdoll_id;
+  double vx, vy, vz;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) ||
+      !GetDoubleArg(env, args[2], &vx) || !GetDoubleArg(env, args[3], &vy) ||
+      !GetDoubleArg(env, args[4], &vz)) {
+    ThrowTypeError(env, "ragdollSetLinearVelocity: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 6) { bool b; if (GetBoolArg(env, args[5], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollSetLinearVelocity(ragdoll_id, (float)vx, (float)vy, (float)vz, lock), &result);
+  return result;
+}
+
+napi_value RagdollAddLinearVelocity(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(5, 6)
+  uint32_t ragdoll_id;
+  double vx, vy, vz;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) ||
+      !GetDoubleArg(env, args[2], &vx) || !GetDoubleArg(env, args[3], &vy) ||
+      !GetDoubleArg(env, args[4], &vz)) {
+    ThrowTypeError(env, "ragdollAddLinearVelocity: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 6) { bool b; if (GetBoolArg(env, args[5], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollAddLinearVelocity(ragdoll_id, (float)vx, (float)vy, (float)vz, lock), &result);
+  return result;
+}
+
+napi_value RagdollSetLinearAndAngularVelocity(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(8, 9)
+  uint32_t ragdoll_id;
+  double lvx, lvy, lvz, avx, avy, avz;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) ||
+      !GetDoubleArg(env, args[2], &lvx) || !GetDoubleArg(env, args[3], &lvy) ||
+      !GetDoubleArg(env, args[4], &lvz) || !GetDoubleArg(env, args[5], &avx) ||
+      !GetDoubleArg(env, args[6], &avy) || !GetDoubleArg(env, args[7], &avz)) {
+    ThrowTypeError(env, "ragdollSetLinearAndAngularVelocity: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 9) { bool b; if (GetBoolArg(env, args[8], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollSetLinearAndAngularVelocity(ragdoll_id,
+    (float)lvx, (float)lvy, (float)lvz, (float)avx, (float)avy, (float)avz, lock), &result);
+  return result;
+}
+
+napi_value RagdollAddImpulse(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(5, 6)
+  uint32_t ragdoll_id;
+  double ix, iy, iz;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id) ||
+      !GetDoubleArg(env, args[2], &ix) || !GetDoubleArg(env, args[3], &iy) ||
+      !GetDoubleArg(env, args[4], &iz)) {
+    ThrowTypeError(env, "ragdollAddImpulse: invalid args"); return nullptr;
+  }
+  bool lock = true;
+  if (argc >= 6) { bool b; if (GetBoolArg(env, args[5], &b)) lock = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollAddImpulse(ragdoll_id, (float)ix, (float)iy, (float)iz, lock), &result);
+  return result;
+}
+
+napi_value RagdollAddToPhysicsSystem(napi_env env, napi_callback_info info) {
+  WORLD_FN_OPT(2, 3)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollAddToPhysicsSystem: invalid args"); return nullptr;
+  }
+  bool activate = true;
+  if (argc >= 3) { bool b; if (GetBoolArg(env, args[2], &b)) activate = b; }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollAddToPhysicsSystem(ragdoll_id, activate), &result);
+  return result;
+}
+
+napi_value RagdollRemoveFromPhysicsSystem(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollRemoveFromPhysicsSystem: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollRemoveFromPhysicsSystem(ragdoll_id), &result);
+  return result;
+}
+
+napi_value RagdollStabilize(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t ragdoll_id;
+  if (!GetUInt32Arg(env, args[1], &ragdoll_id)) {
+    ThrowTypeError(env, "ragdollStabilize: invalid args"); return nullptr;
+  }
+  napi_value result;
+  napi_get_boolean(env, handle->world->RagdollStabilize(ragdoll_id), &result);
+  return result;
+}
+
 napi_value SnapshotState(napi_env env, napi_callback_info info) {
   WORLD_FN_BEGIN(1)
   std::vector<uint8_t> data = handle->world->SnapshotState();
@@ -5844,6 +6766,193 @@ napi_value LoadScene(napi_env env, napi_callback_info info) {
   napi_create_int32(env, count, &result);
   return result;
 }
+
+// ── CharacterVirtual NAPI wrappers ────────────────────────────────────────
+
+napi_value CreateCharacter(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(9)
+  double half_height, radius, x, y, z, mass, max_strength, max_slope_angle;
+  if (!GetDoubleArg(env, args[1], &half_height) || !GetDoubleArg(env, args[2], &radius) ||
+      !GetDoubleArg(env, args[3], &x) || !GetDoubleArg(env, args[4], &y) || !GetDoubleArg(env, args[5], &z) ||
+      !GetDoubleArg(env, args[6], &mass) || !GetDoubleArg(env, args[7], &max_strength) ||
+      !GetDoubleArg(env, args[8], &max_slope_angle)) {
+    ThrowTypeError(env, "createCharacter: invalid args");
+    return nullptr;
+  }
+  uint32_t id = handle->world->CreateCharacter(
+      static_cast<float>(half_height), static_cast<float>(radius),
+      x, y, z,
+      static_cast<float>(mass), static_cast<float>(max_strength),
+      static_cast<float>(max_slope_angle));
+  napi_value result;
+  napi_create_uint32(env, id, &result);
+  return result;
+}
+
+napi_value DestroyCharacter(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  uint32_t id = 0;
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "destroyCharacter: invalid id"); return nullptr; }
+  id = static_cast<uint32_t>(d);
+  bool ok = handle->world->DestroyCharacter(id);
+  napi_value result; napi_get_boolean(env, ok, &result);
+  return result;
+}
+
+napi_value CharacterUpdate(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(3)
+  double d, dt;
+  if (!GetDoubleArg(env, args[1], &d) || !GetDoubleArg(env, args[2], &dt)) {
+    ThrowTypeError(env, "characterUpdate: invalid args"); return nullptr;
+  }
+  bool ok = handle->world->CharacterUpdate(static_cast<uint32_t>(d), static_cast<float>(dt));
+  napi_value result; napi_get_boolean(env, ok, &result);
+  return result;
+}
+
+napi_value SetCharacterLinearVelocity(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(5)
+  double d, vx, vy, vz;
+  if (!GetDoubleArg(env, args[1], &d) || !GetDoubleArg(env, args[2], &vx) ||
+      !GetDoubleArg(env, args[3], &vy) || !GetDoubleArg(env, args[4], &vz)) {
+    ThrowTypeError(env, "setCharacterLinearVelocity: invalid args"); return nullptr;
+  }
+  bool ok = handle->world->SetCharacterLinearVelocity(
+      static_cast<uint32_t>(d), static_cast<float>(vx), static_cast<float>(vy), static_cast<float>(vz));
+  napi_value result; napi_get_boolean(env, ok, &result);
+  return result;
+}
+
+napi_value GetCharacterLinearVelocity(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterLinearVelocity: invalid id"); return nullptr; }
+  Vec3 vel;
+  if (!handle->world->GetCharacterLinearVelocity(static_cast<uint32_t>(d), vel)) return nullptr;
+  return MakeVec3Object(env, RVec3(vel.GetX(), vel.GetY(), vel.GetZ()));
+}
+
+napi_value SetCharacterPosition(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(5)
+  double d, x, y, z;
+  if (!GetDoubleArg(env, args[1], &d) || !GetDoubleArg(env, args[2], &x) ||
+      !GetDoubleArg(env, args[3], &y) || !GetDoubleArg(env, args[4], &z)) {
+    ThrowTypeError(env, "setCharacterPosition: invalid args"); return nullptr;
+  }
+  bool ok = handle->world->SetCharacterPosition(static_cast<uint32_t>(d), x, y, z);
+  napi_value result; napi_get_boolean(env, ok, &result);
+  return result;
+}
+
+napi_value GetCharacterPosition(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterPosition: invalid id"); return nullptr; }
+  RVec3 pos;
+  if (!handle->world->GetCharacterPosition(static_cast<uint32_t>(d), pos)) return nullptr;
+  return MakeVec3Object(env, pos);
+}
+
+napi_value SetCharacterRotation(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(6)
+  double d, rx, ry, rz, rw;
+  if (!GetDoubleArg(env, args[1], &d) || !GetDoubleArg(env, args[2], &rx) ||
+      !GetDoubleArg(env, args[3], &ry) || !GetDoubleArg(env, args[4], &rz) ||
+      !GetDoubleArg(env, args[5], &rw)) {
+    ThrowTypeError(env, "setCharacterRotation: invalid args"); return nullptr;
+  }
+  bool ok = handle->world->SetCharacterRotation(
+      static_cast<uint32_t>(d), static_cast<float>(rx), static_cast<float>(ry),
+      static_cast<float>(rz), static_cast<float>(rw));
+  napi_value result; napi_get_boolean(env, ok, &result);
+  return result;
+}
+
+napi_value GetCharacterRotation(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterRotation: invalid id"); return nullptr; }
+  Quat rot;
+  if (!handle->world->GetCharacterRotation(static_cast<uint32_t>(d), rot)) return nullptr;
+  return MakeQuatObject(env, rot);
+}
+
+napi_value GetCharacterGroundState(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterGroundState: invalid id"); return nullptr; }
+  int state = handle->world->GetCharacterGroundState(static_cast<uint32_t>(d));
+  napi_value result; napi_create_int32(env, state, &result);
+  return result;
+}
+
+napi_value GetCharacterGroundNormal(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterGroundNormal: invalid id"); return nullptr; }
+  Vec3 normal;
+  if (!handle->world->GetCharacterGroundNormal(static_cast<uint32_t>(d), normal)) return nullptr;
+  return MakeVec3Object(env, RVec3(normal.GetX(), normal.GetY(), normal.GetZ()));
+}
+
+napi_value GetCharacterGroundBodyId(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(2)
+  double d; if (!GetDoubleArg(env, args[1], &d)) { ThrowTypeError(env, "getCharacterGroundBodyId: invalid id"); return nullptr; }
+  uint32_t body_id = handle->world->GetCharacterGroundBodyId(static_cast<uint32_t>(d));
+  napi_value result; napi_create_uint32(env, body_id, &result);
+  return result;
+}
+
+#ifdef JPH_DEBUG_RENDERER
+napi_value GetDebugGeometry(napi_env env, napi_callback_info info) {
+  WORLD_FN_BEGIN(5)
+  bool draw_bodies, draw_constraints, draw_constraint_limits, wireframe;
+  if (!GetBoolArg(env, args[1], &draw_bodies) || !GetBoolArg(env, args[2], &draw_constraints) ||
+      !GetBoolArg(env, args[3], &draw_constraint_limits) || !GetBoolArg(env, args[4], &wireframe)) {
+    ThrowTypeError(env, "getDebugGeometry: invalid args"); return nullptr;
+  }
+
+  PhysicsWorld::DebugGeoResult geo = handle->world->GetDebugGeometry(
+      draw_bodies, draw_constraints, draw_constraint_limits, wireframe);
+
+  // Build Float32Array for line positions
+  napi_value line_pos_buf, tri_pos_buf;
+  napi_value line_col_buf, tri_col_buf;
+  void *data_ptr;
+  size_t byte_len;
+
+  // Lines: positions (Float32Array)
+  byte_len = geo.linePos.size() * sizeof(float);
+  napi_create_arraybuffer(env, byte_len, &data_ptr, &line_pos_buf);
+  if (byte_len > 0) std::memcpy(data_ptr, geo.linePos.data(), byte_len);
+  napi_value line_pos_arr;
+  napi_create_typedarray(env, napi_float32_array, geo.linePos.size(), line_pos_buf, 0, &line_pos_arr);
+
+  // Lines: colors (Uint32Array)
+  byte_len = geo.lineCol.size() * sizeof(uint32_t);
+  napi_create_arraybuffer(env, byte_len, &data_ptr, &line_col_buf);
+  if (byte_len > 0) std::memcpy(data_ptr, geo.lineCol.data(), byte_len);
+  napi_value line_col_arr;
+  napi_create_typedarray(env, napi_uint32_array, geo.lineCol.size(), line_col_buf, 0, &line_col_arr);
+
+  // Triangles: positions (Float32Array)
+  byte_len = geo.triPos.size() * sizeof(float);
+  napi_create_arraybuffer(env, byte_len, &data_ptr, &tri_pos_buf);
+  if (byte_len > 0) std::memcpy(data_ptr, geo.triPos.data(), byte_len);
+  napi_value tri_pos_arr;
+  napi_create_typedarray(env, napi_float32_array, geo.triPos.size(), tri_pos_buf, 0, &tri_pos_arr);
+
+  // Triangles: colors (Uint32Array)
+  byte_len = geo.triCol.size() * sizeof(uint32_t);
+  napi_create_arraybuffer(env, byte_len, &data_ptr, &tri_col_buf);
+  if (byte_len > 0) std::memcpy(data_ptr, geo.triCol.data(), byte_len);
+  napi_value tri_col_arr;
+  napi_create_typedarray(env, napi_uint32_array, geo.triCol.size(), tri_col_buf, 0, &tri_col_arr);
+
+  napi_value result;
+  napi_create_object(env, &result);
+  napi_set_named_property(env, result, "lines", line_pos_arr);
+  napi_set_named_property(env, result, "lineColors", line_col_arr);
+  napi_set_named_property(env, result, "triangles", tri_pos_arr);
+  napi_set_named_property(env, result, "triangleColors", tri_col_arr);
+  return result;
+}
+#endif
 
 #undef WORLD_FN_BEGIN
 
@@ -5911,6 +7020,8 @@ napi_value Init(napi_env env, napi_value exports) {
       {"rayCastAll", nullptr, RayCastAll, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"collideSphereAll", nullptr, CollideSphereAll, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"castSphereAll", nullptr, CastSphereAll, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"castBoxAll", nullptr, CastBoxAll, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"castCapsuleAll", nullptr, CastCapsuleAll, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"queryAABB", nullptr, QueryAABB, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"areBodiesInContact", nullptr, AreBodiesInContact, nullptr, nullptr, nullptr, napi_default, nullptr},
 
@@ -6006,10 +7117,53 @@ napi_value Init(napi_env env, napi_value exports) {
       {"setRagdollJointConstraint", nullptr, SetRagdollJointConstraint, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"getRagdollConstraintIds", nullptr, GetRagdollConstraintIds, nullptr, nullptr, nullptr, napi_default, nullptr},
 
+      {"createSkeletonPose", nullptr, CreateSkeletonPose, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"destroySkeletonPose", nullptr, DestroySkeletonPose, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"setPoseJoint", nullptr, SetPoseJoint, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getPoseJoint", nullptr, GetPoseJoint, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"setPoseRootOffset", nullptr, SetPoseRootOffset, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getPoseRootOffset", nullptr, GetPoseRootOffset, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"calculatePoseJointMatrices", nullptr, CalculatePoseJointMatrices, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getPoseJointCount", nullptr, GetPoseJointCount, nullptr, nullptr, nullptr, napi_default, nullptr},
+
+      {"ragdollSetPose", nullptr, RagdollSetPose, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollGetPose", nullptr, RagdollGetPose, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollDriveToPoseKinematics", nullptr, RagdollDriveToPoseKinematics, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollDriveToPoseMotors", nullptr, RagdollDriveToPoseMotors, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollActivate", nullptr, RagdollActivate, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollIsActive", nullptr, RagdollIsActive, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollGetRootTransform", nullptr, RagdollGetRootTransform, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollGetWorldSpaceBounds", nullptr, RagdollGetWorldSpaceBounds, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollSetGroupID", nullptr, RagdollSetGroupID, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollResetWarmStart", nullptr, RagdollResetWarmStart, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollSetLinearVelocity", nullptr, RagdollSetLinearVelocity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollAddLinearVelocity", nullptr, RagdollAddLinearVelocity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollSetLinearAndAngularVelocity", nullptr, RagdollSetLinearAndAngularVelocity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollAddImpulse", nullptr, RagdollAddImpulse, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollAddToPhysicsSystem", nullptr, RagdollAddToPhysicsSystem, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollRemoveFromPhysicsSystem", nullptr, RagdollRemoveFromPhysicsSystem, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ragdollStabilize", nullptr, RagdollStabilize, nullptr, nullptr, nullptr, napi_default, nullptr},
+
       {"snapshotState", nullptr, SnapshotState, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"applySnapshot", nullptr, ApplySnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"saveScene", nullptr, SaveScene, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"loadScene", nullptr, LoadScene, nullptr, nullptr, nullptr, napi_default, nullptr},
+
+      {"createCharacter", nullptr, CreateCharacter, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"destroyCharacter", nullptr, DestroyCharacter, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"characterUpdate", nullptr, CharacterUpdate, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"setCharacterLinearVelocity", nullptr, SetCharacterLinearVelocity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterLinearVelocity", nullptr, GetCharacterLinearVelocity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"setCharacterPosition", nullptr, SetCharacterPosition, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterPosition", nullptr, GetCharacterPosition, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"setCharacterRotation", nullptr, SetCharacterRotation, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterRotation", nullptr, GetCharacterRotation, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterGroundState", nullptr, GetCharacterGroundState, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterGroundNormal", nullptr, GetCharacterGroundNormal, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getCharacterGroundBodyId", nullptr, GetCharacterGroundBodyId, nullptr, nullptr, nullptr, napi_default, nullptr},
+#ifdef JPH_DEBUG_RENDERER
+      {"getDebugGeometry", nullptr, GetDebugGeometry, nullptr, nullptr, nullptr, napi_default, nullptr},
+#endif
   };
 
   if (napi_define_properties(env, exports, sizeof(descriptors) / sizeof(descriptors[0]), descriptors) != napi_ok) {

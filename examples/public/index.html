@@ -10,6 +10,7 @@
     <main class="layout">
       <aside class="panel">
         <h1>Jolt Backend Demos</h1>
+        <div id="wsBadge" class="ws-disconnected">○ Disconnected</div>
 
         <label class="field">
           <span>Example</span>
@@ -120,6 +121,45 @@
           <input id="spSliderTarget" type="number" value="1.0" step="0.1" placeholder="slider pos" />
         </div>
         <button id="spApplyBtn">Apply Spring Params</button>
+
+        <h2>Skeleton Pose</h2>
+        <div class="actions">
+          <button id="poseToggleBtn">Toggle Animated/Physics</button>
+          <button id="poseResetBtn">Reset Pose</button>
+        </div>
+
+        <h2>Ragdoll Extended</h2>
+        <div class="grid3">
+          <input id="rdIX" type="number" value="0" step="1" placeholder="IX" />
+          <input id="rdIY" type="number" value="20" step="1" placeholder="IY" />
+          <input id="rdIZ" type="number" value="0" step="1" placeholder="IZ" />
+        </div>
+        <button id="rdImpulseBtn">Add Impulse</button>
+        <div class="grid3">
+          <input id="rdVX" type="number" value="0" step="0.5" placeholder="VX" />
+          <input id="rdVY" type="number" value="5" step="0.5" placeholder="VY" />
+          <input id="rdVZ" type="number" value="0" step="0.5" placeholder="VZ" />
+        </div>
+        <button id="rdVelocityBtn">Set Velocity</button>
+        <div class="actions">
+          <button id="rdActivateBtn">Activate</button>
+          <button id="rdWarmStartBtn">Reset Warm Start</button>
+        </div>
+        <button id="rdTogglePhysicsBtn">Toggle Add/Remove Physics</button>
+
+        <h2>Mixamo Erika</h2>
+        <button id="erikaToggleModeBtn">Toggle Animated / Ragdoll  [R]</button>
+        <div class="grid3" style="margin-top:8px">
+          <input id="erikaIX" type="number" value="0" step="10" placeholder="IX" />
+          <input id="erikaIY" type="number" value="20" step="10" placeholder="IY" />
+          <input id="erikaIZ" type="number" value="0" step="10" placeholder="IZ" />
+        </div>
+        <button id="erikaImpulseBtn">Apply Impulse</button>
+        <div class="actions">
+          <button id="erikaActivateBtn">Wake Up</button>
+          <button id="erikaResetBtn">Reset</button>
+        </div>
+        <div class="kbd-hint">WASD / ↑↓←→ — push &nbsp; Space — jump</div>
 
         <pre id="status"></pre>
       </aside>

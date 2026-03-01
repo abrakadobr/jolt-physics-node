@@ -15,7 +15,8 @@
         "-fno-exceptions"
       ],
       "defines": [
-        "JPH_OBJECT_STREAM"
+        "JPH_OBJECT_STREAM",
+        "JPH_DEBUG_RENDERER"
       ],
       "conditions": [
         ["OS=='linux'", {

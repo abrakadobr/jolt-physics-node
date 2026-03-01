@@ -48,6 +48,59 @@ function normQuat(v, n) {
   };
 }
 
+class SkeletonPose {
+  constructor(world, id) {
+    this.world = world;
+    this.id = id >>> 0;
+    this._destroyed = false;
+  }
+
+  _alive() {
+    if (this._destroyed) throw new Error('SkeletonPose is destroyed');
+  }
+
+  getJointCount() {
+    this._alive();
+    return native.getPoseJointCount(this.world._handle(), this.id);
+  }
+
+  setJoint(index, translation, rotation) {
+    this._alive();
+    const t = pos(translation, 'translation');
+    const r = quat(rotation, 'rotation');
+    ok(native.setPoseJoint(this.world._handle(), this.id, index | 0,
+      t.x, t.y, t.z, r.x, r.y, r.z, r.w), 'setJoint');
+  }
+
+  getJoint(index) {
+    this._alive();
+    return got(native.getPoseJoint(this.world._handle(), this.id, index | 0), 'getJoint');
+  }
+
+  setRootOffset(position) {
+    this._alive();
+    const p = pos(position, 'position');
+    ok(native.setPoseRootOffset(this.world._handle(), this.id, p.x, p.y, p.z), 'setRootOffset');
+  }
+
+  getRootOffset() {
+    this._alive();
+    return got(native.getPoseRootOffset(this.world._handle(), this.id), 'getRootOffset');
+  }
+
+  calculateJointMatrices() {
+    this._alive();
+    native.calculatePoseJointMatrices(this.world._handle(), this.id);
+  }
+
+  destroy() {
+    if (!this._destroyed) {
+      native.destroySkeletonPose(this.world._handle(), this.id);
+      this._destroyed = true;
+    }
+  }
+}
+
 class Skeleton {
   constructor(world) {
     this.world = world;
@@ -182,11 +235,207 @@ class Ragdoll {
     return native.getRagdollConstraintIds(this.world._handle(), this.id);
   }
 
+  // Create a SkeletonPose linked to this ragdoll's skeleton.
+  createPose() {
+    this._alive();
+    const id = native.createSkeletonPose(this.world._handle(), this.id);
+    if (!id) throw new Error('createPose: failed (invalid ragdoll?)');
+    return new SkeletonPose(this.world, id);
+  }
+
+  // Set ragdoll pose from a SkeletonPose (teleport bodies to pose positions).
+  setPose(pose, lockBodies = true) {
+    this._alive();
+    ok(native.ragdollSetPose(this.world._handle(), this.id, pose.id, Boolean(lockBodies)), 'setPose');
+  }
+
+  // Fill a SkeletonPose with the current bone world-space transforms.
+  getPose(pose, lockBodies = true) {
+    this._alive();
+    ok(native.ragdollGetPose(this.world._handle(), this.id, pose.id, Boolean(lockBodies)), 'getPose');
+  }
+
+  // Drive the ragdoll toward the pose using kinematic bodies (teleport each step).
+  driveToPoseKinematics(pose, dt, lockBodies = true) {
+    this._alive();
+    ok(native.ragdollDriveToPoseKinematics(
+      this.world._handle(), this.id, pose.id, num(dt, 'dt'), Boolean(lockBodies)), 'driveToPoseKinematics');
+  }
+
+  // Drive the ragdoll toward the pose using motors.
+  driveToPoseMotors(pose) {
+    this._alive();
+    ok(native.ragdollDriveToPoseMotors(this.world._handle(), this.id, pose.id), 'driveToPoseMotors');
+  }
+
+  // Activate all bodies in the ragdoll.
+  activate(lockBodies = true) {
+    this._alive();
+    native.ragdollActivate(this.world._handle(), this.id, Boolean(lockBodies));
+  }
+
+  // Returns true if any body in the ragdoll is active.
+  isActive() {
+    this._alive();
+    const v = native.ragdollIsActive(this.world._handle(), this.id);
+    if (v < 0) throw new Error('isActive: ragdoll not found');
+    return v === 1;
+  }
+
+  // Returns { position, rotation } of the root body in world space.
+  getRootTransform() {
+    this._alive();
+    return got(native.ragdollGetRootTransform(this.world._handle(), this.id), 'getRootTransform');
+  }
+
+  // Returns { min: {x,y,z}, max: {x,y,z} } AABB of all ragdoll bodies.
+  getWorldSpaceBounds() {
+    this._alive();
+    return got(native.ragdollGetWorldSpaceBounds(this.world._handle(), this.id), 'getWorldSpaceBounds');
+  }
+
+  // Set the collision group ID for all bodies in the ragdoll.
+  setGroupID(groupId, lockBodies = true) {
+    this._alive();
+    ok(native.ragdollSetGroupID(this.world._handle(), this.id, groupId >>> 0, Boolean(lockBodies)), 'setGroupID');
+  }
+
+  // Reset warm-start data for all constraints (call after SetPose to avoid impulse artifacts).
+  resetWarmStart() {
+    this._alive();
+    native.ragdollResetWarmStart(this.world._handle(), this.id);
+  }
+
+  // Set linear velocity for all bodies.
+  setLinearVelocity(v, lockBodies = true) {
+    this._alive();
+    const vel = pos(v, 'velocity');
+    ok(native.ragdollSetLinearVelocity(this.world._handle(), this.id, vel.x, vel.y, vel.z, Boolean(lockBodies)), 'setLinearVelocity');
+  }
+
+  // Add a linear velocity delta to all bodies.
+  addLinearVelocity(v, lockBodies = true) {
+    this._alive();
+    const vel = pos(v, 'velocity');
+    ok(native.ragdollAddLinearVelocity(this.world._handle(), this.id, vel.x, vel.y, vel.z, Boolean(lockBodies)), 'addLinearVelocity');
+  }
+
+  // Set both linear and angular velocity for all bodies.
+  setLinearAndAngularVelocity(linearVelocity, angularVelocity, lockBodies = true) {
+    this._alive();
+    const lv = pos(linearVelocity, 'linearVelocity');
+    const av = pos(angularVelocity, 'angularVelocity');
+    ok(native.ragdollSetLinearAndAngularVelocity(
+      this.world._handle(), this.id,
+      lv.x, lv.y, lv.z, av.x, av.y, av.z, Boolean(lockBodies)), 'setLinearAndAngularVelocity');
+  }
+
+  // Apply an impulse to all bodies.
+  addImpulse(impulse, lockBodies = true) {
+    this._alive();
+    const imp = pos(impulse, 'impulse');
+    ok(native.ragdollAddImpulse(this.world._handle(), this.id, imp.x, imp.y, imp.z, Boolean(lockBodies)), 'addImpulse');
+  }
+
+  // Add the ragdoll back to the physics system (after removeFromPhysicsSystem).
+  addToPhysicsSystem(activate = true) {
+    this._alive();
+    ok(native.ragdollAddToPhysicsSystem(this.world._handle(), this.id, Boolean(activate)), 'addToPhysicsSystem');
+  }
+
+  // Remove the ragdoll from the physics system without destroying it.
+  removeFromPhysicsSystem() {
+    this._alive();
+    ok(native.ragdollRemoveFromPhysicsSystem(this.world._handle(), this.id), 'removeFromPhysicsSystem');
+  }
+
+  // Stabilize constraints (call on RagdollSettings after creation to reduce jitter).
+  stabilize() {
+    this._alive();
+    return native.ragdollStabilize(this.world._handle(), this.id);
+  }
+
   destroy() {
     if (!this._destroyed) {
       native.destroyRagdoll(this.world._handle(), this.id);
       this._destroyed = true;
     }
+  }
+}
+
+class Character {
+  constructor(world, id) {
+    this.world = world;
+    this.id = id >>> 0;
+    this._destroyed = false;
+  }
+
+  _alive() { if (this._destroyed) throw new Error('Character is destroyed'); }
+
+  update(dt) {
+    this._alive();
+    ok(native.characterUpdate(this.world._handle(), this.id, num(dt, 'dt')), 'update');
+  }
+
+  getPosition() {
+    this._alive();
+    return got(native.getCharacterPosition(this.world._handle(), this.id), 'getPosition');
+  }
+
+  setPosition(p) {
+    this._alive();
+    const v = pos(p, 'p');
+    ok(native.setCharacterPosition(this.world._handle(), this.id, v.x, v.y, v.z), 'setPosition');
+  }
+
+  getLinearVelocity() {
+    this._alive();
+    return got(native.getCharacterLinearVelocity(this.world._handle(), this.id), 'getLinearVelocity');
+  }
+
+  setLinearVelocity(v) {
+    this._alive();
+    const u = pos(v, 'v');
+    ok(native.setCharacterLinearVelocity(this.world._handle(), this.id, u.x, u.y, u.z), 'setLinearVelocity');
+  }
+
+  getRotation() {
+    this._alive();
+    return got(native.getCharacterRotation(this.world._handle(), this.id), 'getRotation');
+  }
+
+  setRotation(q) {
+    this._alive();
+    const r = normQuat(q, 'q');
+    ok(native.setCharacterRotation(this.world._handle(), this.id, r.x, r.y, r.z, r.w), 'setRotation');
+  }
+
+  getGroundState() {
+    this._alive();
+    const s = native.getCharacterGroundState(this.world._handle(), this.id);
+    if (s < 0) throw new Error('Character not found');
+    return s;
+  }
+
+  isOnGround()       { return this.getGroundState() === 0; }
+  isOnSteepGround()  { return this.getGroundState() === 1; }
+  isInAir()          { return this.getGroundState() === 3; }
+
+  getGroundNormal() {
+    this._alive();
+    return native.getCharacterGroundNormal(this.world._handle(), this.id);
+  }
+
+  getGroundBodyId() {
+    this._alive();
+    const id = native.getCharacterGroundBodyId(this.world._handle(), this.id);
+    return id === 0 ? null : id;
+  }
+
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    native.destroyCharacter(this.world._handle(), this.id);
   }
 }
 
@@ -515,6 +764,23 @@ class World {
     const args = [this._handle(), o.x, o.y, o.z, d.x, d.y, d.z, num(maxDistance, 'maxDistance'), num(radius, 'radius')];
     if (filter != null) args.push(filter);
     return native.castSphereAll(...args);
+  }
+
+  castBoxAll({ origin, direction, maxDistance, halfExtents, filter }) {
+    const o = pos(origin, 'origin');
+    const d = pos(direction, 'direction');
+    const e = pos(halfExtents, 'halfExtents');
+    const args = [this._handle(), o.x, o.y, o.z, d.x, d.y, d.z, num(maxDistance, 'maxDistance'), e.x, e.y, e.z];
+    if (filter != null) args.push(filter);
+    return native.castBoxAll(...args);
+  }
+
+  castCapsuleAll({ origin, direction, maxDistance, halfHeight, radius, filter }) {
+    const o = pos(origin, 'origin');
+    const d = pos(direction, 'direction');
+    const args = [this._handle(), o.x, o.y, o.z, d.x, d.y, d.z, num(maxDistance, 'maxDistance'), num(halfHeight, 'halfHeight'), num(radius, 'radius')];
+    if (filter != null) args.push(filter);
+    return native.castCapsuleAll(...args);
   }
 
   createFixedConstraint(bodyA, bodyB) {
@@ -1014,6 +1280,27 @@ class World {
     ok(native.adjustMutableCenterOfMass(this._handle(), bodyId >>> 0), 'adjustMutableCenterOfMass');
   }
 
+  // ── Batch API ─────────────────────────────────────────────────────────────
+
+  createBodies(specs = []) {
+    return specs.map((s, i) => {
+      switch (s.kind ?? s.type) {
+        case 'sphere':      return this.createSphere(s);
+        case 'box':         return this.createBox(s);
+        case 'capsule':     return this.createCapsule(s);
+        case 'cylinder':    return this.createCylinder(s);
+        case 'convexHull':  return this.createConvexHull(s);
+        case 'mesh':        return this.createMesh(s);
+        case 'heightField': return this.createHeightField(s);
+        default: throw new Error(`createBodies: unknown kind '${s.kind ?? s.type}' at index ${i}`);
+      }
+    });
+  }
+
+  removeBodies(bodyIds = []) {
+    for (const id of bodyIds) this.removeBody(id);
+  }
+
   // ── Serialization ─────────────────────────────────────────────────────────
 
   // Returns a Buffer with compact state of all bodies (56 bytes each).
@@ -1044,6 +1331,25 @@ class World {
   createSkeleton() {
     return new Skeleton(this);
   }
+
+  // ── CharacterVirtual ──────────────────────────────────────────────────────
+
+  createCharacter({ halfHeight = 0.9, radius = 0.3, position, mass = 70, maxStrength = 100, maxSlopeAngle = 50 } = {}) {
+    const p = pos(position, 'position');
+    const id = native.createCharacter(this._handle(),
+      num(halfHeight, 'halfHeight'), num(radius, 'radius'),
+      p.x, p.y, p.z,
+      num(mass, 'mass'), num(maxStrength, 'maxStrength'),
+      num(maxSlopeAngle, 'maxSlopeAngle') * Math.PI / 180);
+    if (!id) throw new Error('createCharacter: failed');
+    return new Character(this, id);
+  }
+
+  // ── DebugRenderer ─────────────────────────────────────────────────────────
+
+  debugDraw({ bodies = true, constraints = false, constraintLimits = false, wireframe = true } = {}) {
+    return native.getDebugGeometry(this._handle(), bodies, constraints, constraintLimits, wireframe);
+  }
 }
 
 const { PhysicsWorker } = require('./src/PhysicsWorker');
@@ -1053,5 +1359,7 @@ module.exports = {
   Skeleton,
   RagdollSettings,
   Ragdoll,
+  SkeletonPose,
+  Character,
   PhysicsWorker,
 };

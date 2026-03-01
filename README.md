@@ -17,9 +17,12 @@ Runs entirely on the server — no WebAssembly, no browser target.
 - Rigid body simulation — spheres, boxes, capsules, cylinders, convex hulls, meshes, height fields, compound shapes
 - Full constraint system — hinge, slider, point, cone, fixed, distance, swing-twist, 6DOF, gear, pulley, rack-and-pinion, path
 - Constraint motors with spring/damping parameters
-- Spatial queries — ray casts, sphere collides/sweeps, AABB overlap
+- Spatial queries — ray casts, sphere / box / capsule sweeps, AABB overlap
 - Per-triangle / per-cell material indices (friction, restitution) on mesh and height field shapes
 - Skeleton + Ragdoll system with per-joint shapes and constraints
+- Virtual character controller (`CharacterVirtual`) with gravity, ground-state detection and teleport
+- Batch body creation / removal (`createBodies`, `removeBodies`)
+- Debug renderer — collect physics geometry as `Float32Array` / `Uint32Array` for visualization
 - Compact binary state snapshots for network sync / replay
 - Full scene save/load (Jolt `PhysicsScene` format)
 - `PhysicsWorker` — runs a world in a dedicated Worker thread with async API
@@ -260,6 +263,18 @@ const sweeps = world.castSphereAll({
 })
 // → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
 
+// Sweep a box along a ray
+const boxSweeps = world.castBoxAll({
+  origin: Vec3, direction: Vec3, maxDistance: number, halfExtents: Vec3, filter?
+})
+// → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
+
+// Sweep a capsule along a ray
+const capsuleSweeps = world.castCapsuleAll({
+  origin: Vec3, direction: Vec3, maxDistance: number, halfHeight: number, radius: number, filter?
+})
+// → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
+
 // AABB overlap — returns body IDs only
 const bodies = world.queryAABB({ min: Vec3, max: Vec3, filter? })
 // → [{ bodyId }]
@@ -408,6 +423,143 @@ world.getPulleyLambda(id)      // → number
 world.getGearLambda(id)        // → number
 world.getPathLambdas(id)       // → { position: Vec2, positionLimits, motor, rotationHinge: Vec2, rotation: Vec3 }
 ```
+
+---
+
+### Batch body creation
+
+```js
+// Create multiple bodies in one call — each spec needs a `kind` (or `type`) field
+const [id1, id2, id3] = world.createBodies([
+  { kind: 'sphere',  position: { x: 0, y: 5, z: 0 }, radius: 0.5 },
+  { kind: 'box',     position: { x: 2, y: 5, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } },
+  { kind: 'capsule', position: { x: 4, y: 5, z: 0 }, halfHeight: 0.5, radius: 0.3 },
+])
+// Supported kinds: 'sphere' | 'box' | 'capsule' | 'cylinder' | 'convexHull' | 'mesh' | 'heightField'
+
+// Remove multiple bodies at once
+world.removeBodies([id1, id2, id3])
+```
+
+---
+
+### CharacterVirtual
+
+A collision-based virtual character — no rigid body, gravity applied manually each step.
+
+```js
+const char = world.createCharacter({
+  halfHeight?: number,    // capsule half-height, default 0.9
+  radius?: number,        // capsule radius, default 0.3
+  position: Vec3,         // initial world-space position (required)
+  mass?: number,          // default 70 kg
+  maxStrength?: number,   // max force character can exert, default 100 N
+  maxSlopeAngle?: number, // max walkable slope in degrees, default 50
+})
+
+// Advance character simulation (call once per physics step)
+char.update(dt)
+
+// Position
+char.getPosition()          // → Vec3
+char.setPosition(vec3)      // teleport + refresh contacts
+
+// Velocity
+char.getLinearVelocity()    // → Vec3
+char.setLinearVelocity(vec3)
+
+// Rotation
+char.getRotation()          // → Quat
+char.setRotation(quat)
+
+// Ground state
+char.getGroundState()       // → 0=OnGround | 1=OnSteepGround | 2=NotSupported | 3=InAir
+char.isOnGround()           // → boolean
+char.isOnSteepGround()      // → boolean
+char.isInAir()              // → boolean
+
+char.getGroundNormal()      // → Vec3 (zero when in air)
+char.getGroundBodyId()      // → BodyId | null
+
+char.destroy()
+```
+
+**Typical game loop:**
+
+```js
+function tick(dt) {
+  // Apply input before update
+  const vel = char.getLinearVelocity();
+  vel.x = inputX * 4;
+  vel.z = inputZ * 4;
+  if (jumpPressed && char.isOnGround()) vel.y = 6;
+  char.setLinearVelocity(vel);
+
+  char.update(dt);   // CharacterVirtual step
+  world.step(dt);    // Jolt physics step
+}
+```
+
+---
+
+### DebugRenderer
+
+Collects all physics geometry from the world as `TypedArray` buffers — use for in-game debug overlays.
+
+```js
+const geo = world.debugDraw({
+  bodies?: boolean,           // draw body shapes (default: true)
+  constraints?: boolean,      // draw constraints (default: false)
+  constraintLimits?: boolean, // draw constraint limits (default: false)
+  wireframe?: boolean,        // wireframe vs solid (default: true)
+})
+```
+
+**Return value:**
+
+| Field | Type | Content |
+|---|---|---|
+| `lines` | `Float32Array` | Interleaved `[x1,y1,z1, x2,y2,z2, …]` — 6 floats per segment |
+| `lineColors` | `Uint32Array` | One ARGB color per line segment |
+| `triangles` | `Float32Array` | Interleaved `[x1,y1,z1, x2,y2,z2, x3,y3,z3, …]` — 9 floats per triangle |
+| `triangleColors` | `Uint32Array` | One ARGB color per triangle |
+
+**Three.js example (wireframe):**
+
+```js
+const lineMesh = new THREE.LineSegments(
+  new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ vertexColors: true })
+)
+scene.add(lineMesh)
+
+function updateDebug() {
+  const geo = world.debugDraw({ wireframe: true })
+  const lineCount = geo.lines.length / 6
+
+  // Convert ARGB Uint32 → per-vertex RGB Float32
+  const colors = new Float32Array(lineCount * 2 * 3)
+  for (let i = 0; i < lineCount; i++) {
+    const c = geo.lineColors[i]
+    const r = ((c >> 16) & 0xff) / 255
+    const g = ((c >>  8) & 0xff) / 255
+    const b = ((c      ) & 0xff) / 255
+    colors.set([r, g, b, r, g, b], i * 6)
+  }
+
+  const geom = lineMesh.geometry
+  geom.setAttribute('position', new THREE.BufferAttribute(geo.lines, 3))
+  geom.setAttribute('color',    new THREE.BufferAttribute(colors, 3))
+  geom.computeBoundingSphere()
+}
+```
+
+**Default color scheme (EShapeColor::MotionTypeColor):**
+- Grey — static bodies
+- Green — active dynamic bodies
+- Blue — sleeping bodies
+
+> `debugDraw()` traverses the full scene each call. Use only for diagnostics, not in production.
 
 ---
 

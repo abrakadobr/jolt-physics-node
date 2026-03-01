@@ -1,6 +1,6 @@
 {
   "name": "jolt-physics-node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node.js N-API binding for Jolt Physics — rigid body simulation for server-side applications",
   "author": "abrakadobr",
   "license": "MIT",
@@ -58,6 +58,7 @@
   ],
   "devDependencies": {
     "nodemon": "^3.1.14",
-    "typedoc": "^0.27.0"
+    "typedoc": "^0.27.0",
+    "ws": "^8.18.0"
   }
 }

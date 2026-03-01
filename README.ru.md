@@ -17,9 +17,12 @@
 - Симуляция твёрдых тел — сферы, боксы, капсулы, цилиндры, выпуклые оболочки, меши, поля высот, составные фигуры
 - Полная система ограничений — шарнир, слайдер, точка, конус, фиксированный, дистанция, swing-twist, 6DOF, шестерня, блок-и-такль, рейка-и-шестерня, путевой констрейнт
 - Моторы ограничений с параметрами пружины и демпфирования
-- Пространственные запросы — рейкасты, коллизии/свипы сферой, AABB-пересечения
+- Пространственные запросы — рейкасты, свипы сферой / боксом / капсулой, AABB-пересечения
 - Материальные индексы (трение, упругость) для отдельных треугольников меша и ячеек поля высот
 - Система скелета и рэгдолла с настройкой формы и ограничений каждого сустава
+- Виртуальный персонаж (`CharacterVirtual`) с гравитацией, определением состояния земли и телепортом
+- Пакетное создание/удаление тел (`createBodies`, `removeBodies`)
+- Debug-рендерер — геометрия физики в виде `Float32Array` / `Uint32Array` для визуализации
 - Компактные бинарные снепшоты состояния для сетевой синхронизации и воспроизведения
 - Полное сохранение/загрузка сцены (формат Jolt `PhysicsScene`)
 - `PhysicsWorker` — мир в отдельном потоке Worker с асинхронным API
@@ -260,6 +263,18 @@ const sweeps = world.castSphereAll({
 })
 // → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
 
+// Свип бокса вдоль луча
+const boxSweeps = world.castBoxAll({
+  origin: Vec3, direction: Vec3, maxDistance: number, halfExtents: Vec3, filter?
+})
+// → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
+
+// Свип капсулы вдоль луча
+const capsuleSweeps = world.castCapsuleAll({
+  origin: Vec3, direction: Vec3, maxDistance: number, halfHeight: number, radius: number, filter?
+})
+// → [{ bodyId, fraction, penetrationDepth, point: Vec3, normal: Vec3, materialIndex }]
+
 // Перекрытие AABB — возвращает только идентификаторы
 const bodies = world.queryAABB({ min: Vec3, max: Vec3, filter? })
 // → [{ bodyId }]
@@ -408,6 +423,143 @@ world.getPulleyLambda(id)      // → number
 world.getGearLambda(id)        // → number
 world.getPathLambdas(id)       // → { position: Vec2, positionLimits, motor, rotationHinge: Vec2, rotation: Vec3 }
 ```
+
+---
+
+### Пакетное создание тел
+
+```js
+// Создать несколько тел за один вызов — каждый spec требует поле `kind` (или `type`)
+const [id1, id2, id3] = world.createBodies([
+  { kind: 'sphere',  position: { x: 0, y: 5, z: 0 }, radius: 0.5 },
+  { kind: 'box',     position: { x: 2, y: 5, z: 0 }, halfExtents: { x: 0.5, y: 0.5, z: 0.5 } },
+  { kind: 'capsule', position: { x: 4, y: 5, z: 0 }, halfHeight: 0.5, radius: 0.3 },
+])
+// Допустимые kind: 'sphere' | 'box' | 'capsule' | 'cylinder' | 'convexHull' | 'mesh' | 'heightField'
+
+// Удалить несколько тел за один вызов
+world.removeBodies([id1, id2, id3])
+```
+
+---
+
+### CharacterVirtual (виртуальный персонаж)
+
+Персонаж на основе коллизий — без жёсткого тела, гравитация применяется вручную на каждом шаге.
+
+```js
+const char = world.createCharacter({
+  halfHeight?: number,    // половина высоты цилиндра капсулы, по умолч. 0.9
+  radius?: number,        // радиус капсулы, по умолч. 0.3
+  position: Vec3,         // начальная позиция (обязательно)
+  mass?: number,          // масса, по умолч. 70 кг
+  maxStrength?: number,   // максимальная сила персонажа, по умолч. 100 Н
+  maxSlopeAngle?: number, // максимальный угол откоса в градусах, по умолч. 50
+})
+
+// Шаг симуляции персонажа (вызывать один раз за физический шаг)
+char.update(dt)
+
+// Позиция
+char.getPosition()          // → Vec3
+char.setPosition(vec3)      // телепортировать + обновить контакты
+
+// Скорость
+char.getLinearVelocity()    // → Vec3
+char.setLinearVelocity(vec3)
+
+// Вращение
+char.getRotation()          // → Quat
+char.setRotation(quat)
+
+// Состояние земли
+char.getGroundState()       // → 0=OnGround | 1=OnSteepGround | 2=NotSupported | 3=InAir
+char.isOnGround()           // → boolean
+char.isOnSteepGround()      // → boolean
+char.isInAir()              // → boolean
+
+char.getGroundNormal()      // → Vec3 (нулевой вектор в воздухе)
+char.getGroundBodyId()      // → BodyId | null
+
+char.destroy()
+```
+
+**Типичный игровой цикл:**
+
+```js
+function tick(dt) {
+  // Установить скорость по вводу до update
+  const vel = char.getLinearVelocity();
+  vel.x = inputX * 4;
+  vel.z = inputZ * 4;
+  if (jumpPressed && char.isOnGround()) vel.y = 6;
+  char.setLinearVelocity(vel);
+
+  char.update(dt);   // шаг CharacterVirtual
+  world.step(dt);    // шаг физики Jolt
+}
+```
+
+---
+
+### DebugRenderer (отладочный рендерер)
+
+Собирает всю физическую геометрию мира в виде `TypedArray` — для отладочного оверлея в игре.
+
+```js
+const geo = world.debugDraw({
+  bodies?: boolean,           // рисовать формы тел (по умолч.: true)
+  constraints?: boolean,      // рисовать ограничения (по умолч.: false)
+  constraintLimits?: boolean, // рисовать лимиты ограничений (по умолч.: false)
+  wireframe?: boolean,        // wireframe или solid (по умолч.: true)
+})
+```
+
+**Возвращаемое значение:**
+
+| Поле | Тип | Содержимое |
+|---|---|---|
+| `lines` | `Float32Array` | Попарно `[x1,y1,z1, x2,y2,z2, …]` — 6 float на отрезок |
+| `lineColors` | `Uint32Array` | Один ARGB-цвет на отрезок |
+| `triangles` | `Float32Array` | По три вершины `[x1,y1,z1, x2,y2,z2, x3,y3,z3, …]` — 9 float на треугольник |
+| `triangleColors` | `Uint32Array` | Один ARGB-цвет на треугольник |
+
+**Пример Three.js (wireframe):**
+
+```js
+const lineMesh = new THREE.LineSegments(
+  new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ vertexColors: true })
+)
+scene.add(lineMesh)
+
+function updateDebug() {
+  const geo = world.debugDraw({ wireframe: true })
+  const lineCount = geo.lines.length / 6
+
+  // Конвертировать ARGB Uint32 → RGB Float32 на вершину
+  const colors = new Float32Array(lineCount * 2 * 3)
+  for (let i = 0; i < lineCount; i++) {
+    const c = geo.lineColors[i]
+    const r = ((c >> 16) & 0xff) / 255
+    const g = ((c >>  8) & 0xff) / 255
+    const b = ((c      ) & 0xff) / 255
+    colors.set([r, g, b, r, g, b], i * 6)
+  }
+
+  const geom = lineMesh.geometry
+  geom.setAttribute('position', new THREE.BufferAttribute(geo.lines, 3))
+  geom.setAttribute('color',    new THREE.BufferAttribute(colors, 3))
+  geom.computeBoundingSphere()
+}
+```
+
+**Цветовая схема по умолчанию (EShapeColor::MotionTypeColor):**
+- Серый — статичные тела
+- Зелёный — активные динамические тела
+- Синий — спящие тела
+
+> `debugDraw()` проходит всю сцену при каждом вызове. Используйте только для диагностики.
 
 ---
 
