@@ -1,9 +1,15 @@
 {
   "targets": [
     {
-      "target_name": "jolt_backend",
+      "target_name": "jolt_engine",
       "sources": [
-        "src/addon.cpp",
+        "src/module.cpp",
+        "src/addon/world.cpp",
+        "src/addon/napi/js_convert.cpp",
+        "src/addon/napi/jolt_convert.cpp",
+        "src/addon/events.cpp",
+        "src/addon/layers.cpp",
+        "src/addon/layers_manager.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [

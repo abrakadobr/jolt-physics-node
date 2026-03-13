@@ -594,6 +594,7 @@ class CollectingDebugRenderer : public DebugRenderer {
 };
 #endif
 
+/*
 class PhysicsWorld {
  public:
   enum class PendingEventType { BodyActivated, BodyDeactivated, ContactAdded, ContactPersisted, ContactRemoved };
@@ -2795,7 +2796,8 @@ class PhysicsWorld {
     scene.FromPhysicsSystem(&mPhysicsSystem);
     std::ostringstream oss(std::ios::binary);
     StreamOutWrapper stream(oss);
-    scene.SaveBinaryState(stream, /*inSaveShapes=*/true, /*inSaveGroupFilter=*/true);
+    // stream, inSaveShapes, inSaveGroupFilter
+    scene.SaveBinaryState(stream, true, true);
     const std::string &str = oss.str();
     return std::vector<uint8_t>(str.begin(), str.end());
   }
@@ -3102,7 +3104,9 @@ class PhysicsWorld {
   uint32_t mNextCharacterId = 1;
   std::unordered_map<uint32_t, std::unique_ptr<CharacterVirtual>> mCharacters;
 };
+*/
 
+/*
 struct WorldHandle {
   PhysicsWorld *world = nullptr;
 };
@@ -3255,7 +3259,9 @@ napi_value StepWorld(napi_env env, napi_callback_info info) {
   napi_get_undefined(env, &undefined);
   return undefined;
 }
+*/
 
+/*
 napi_value SetGravity(napi_env env, napi_callback_info info) {
   WORLD_FN_BEGIN(2)
   double gravity = 0.0;
@@ -6955,6 +6961,7 @@ napi_value GetDebugGeometry(napi_env env, napi_callback_info info) {
 #endif
 
 #undef WORLD_FN_BEGIN
+*/
 
 napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor descriptors[] = {
