@@ -3,68 +3,6 @@
 
 namespace JOLT {
 
-  // napi_ref World::constructor;
-
-  /*
-  napi_value World::Init(napi_env env, napi_value exports)
-  {
-    napi_property_descriptor props[] = {
-      // { "on", 0, METHOD(World,on), 0,0,0, napi_default, 0 },
-        METHOD(World, on),
-        // METHOD(World, emit),
-        // METHOD(World,snapshotState),
-        // METHOD(World,applySnapshot),
-        // METHOD(World,saveScene),
-        // METHOD(World,loadScene),
-        // METHOD(World,setGravity)
-    };
-
-    napi_value cons;
-
-    napi_define_class(
-        env,
-        "World",
-        NAPI_AUTO_LENGTH,
-        New,
-        nullptr,
-        sizeof(props)/sizeof(props[0]),
-        props,
-        &cons
-    );
-
-    napi_create_reference(env, cons, 1, &constructor);
-    napi_set_named_property(env, exports, "World", cons);
-
-    return exports;
-  }
-
-  napi_value World::New(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1];
-    napi_value thisArg;
-
-    napi_get_cb_info(env, info, &argc, args, &thisArg, nullptr);
-
-    WorldSettings initData = JsConvert<WorldSettings>::from(env, args[0]);
-
-    World * obj = new World(env, initData);
-
-    napi_wrap(
-        env,
-        thisArg,
-        obj,
-        Destructor,
-        nullptr,
-        nullptr
-    );
-
-    return thisArg;
-  }
-
-  void World::Destructor(napi_env env, void* nativeObject, void*) {
-    delete static_cast<World*>(nativeObject);
-  }
-  */
 
   World::World(napi_env env) : _nenv(env) {}
 
@@ -74,16 +12,6 @@ namespace JOLT {
 
   void World::initialize(WorldSettings s) {
     _settings = s;
-    /*
-    printf("settings mem: %d, bodies: %d, mutex: %d, pairs: %d, contacts: %d, gravity: %f",
-      _settings.memoryPreallocatedMb,
-      _settings.maxBodies,
-      _settings.numBodyMutexes,
-      _settings.maxBodiesPairs,
-      _settings.maxContacts,
-      _settings.gravity
-    );
-    */
     if (_settings.memoryPreallocatedMb < 1) _settings.memoryPreallocatedMb = 10;
     if (_settings.maxBodies < 1) _settings.maxBodies = 1024;
     if (_settings.maxBodiesPairs < 1) _settings.maxBodiesPairs = 1024;
@@ -104,18 +32,14 @@ namespace JOLT {
     JPH::RegisterTypes();
 
     _tempAllocator = new JPH::TempAllocatorImpl(_settings.memoryPreallocatedMb * 1024 * 1024);
-    // printf("allocator done");
     _jobSystem = new JPH::JobSystemThreadPool(
       JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, // comes from Jolt/Physics/PhysicsSettings.h
       std::max(1u, std::thread::hardware_concurrency() - 1)
     );
-    // printf("jobsystem done");
     _layersManager = new LayersManager(_nenv);
     _layersManager->init();
 
-    // printf("layers done");
     _physicsSystem = new JPH::PhysicsSystem();
-    // printf("physics created");
     _physicsSystem->Init(
       _settings.maxBodies,
       _settings.numBodyMutexes,
@@ -125,7 +49,6 @@ namespace JOLT {
       _layersManager->iObjectVsBroadPhaseLayerFilter,
       _layersManager->iObjectLayerPairFilter
     );
-    // printf("physics init");
     _bodyActivationListner = new EngineBodyActivationListener();
     _bodyActivationListner->setWorld(this);
     _physicsSystem->SetBodyActivationListener(_bodyActivationListner);
@@ -133,10 +56,9 @@ namespace JOLT {
     _contactListner = new EngineContactListener();
     _contactListner->setWorld(this);
     _physicsSystem->SetContactListener(_contactListner);
-    /*
-    mPhysicsSystem.SetBodyActivationListener(&mActivationListener);
-    mPhysicsSystem.SetContactListener(&mContactListener);
-    */
+
+    _bodiesManager = new BodyManager(_nenv);
+    _bodiesManager->initialize(this);
 
     setGravity(_settings.gravity);
     // CreateGround();
@@ -144,6 +66,12 @@ namespace JOLT {
 
   LayersManager * World::layersManager() {
     return _layersManager;
+  }
+  BodyManager * World::bodiesManager() {
+    return _bodiesManager;
+  }
+  JPH::PhysicsSystem * World::joltPhysicsSystem() {
+    return _physicsSystem;
   }
 
   std::vector<std::string> World::layers() {
@@ -190,6 +118,7 @@ namespace JOLT {
       mEnv = nullptr;
     }
     */
+    if (_bodiesManager) delete _bodiesManager;
     if (_physicsSystem) delete _physicsSystem;
     if (_contactListner)  delete _contactListner;
     if (_bodyActivationListner) delete _bodyActivationListner;
@@ -223,65 +152,10 @@ namespace JOLT {
     return napi_create_reference(mEnv, cb_or_null, 1, &slot) == napi_ok;
   }
 
-  void SetEventType(napi_value payload, PendingEventType type) const {
-    const char *name = "unknown";
-    switch (type) {
-      case PendingEventType::BodyActivated:
-        name = "activated";
-        break;
-      case PendingEventType::BodyDeactivated:
-        name = "deactivated";
-        break;
-      case PendingEventType::ContactAdded:
-        name = "added";
-        break;
-      case PendingEventType::ContactPersisted:
-        name = "persisted";
-        break;
-      case PendingEventType::ContactRemoved:
-        name = "removed";
-        break;
-    }
-    napi_value v;
-    napi_create_string_utf8(mEnv, name, NAPI_AUTO_LENGTH, &v);
-    napi_set_named_property(mEnv, payload, "type", v);
-  }
-
-  void QueueBodyActivation(bool activated, const BodyID &body_id, uint64_t user_data) {
-    std::lock_guard<std::mutex> lock(mPendingEventsMutex);
-    PendingEvent ev;
-    ev.type = activated ? PendingEventType::BodyActivated : PendingEventType::BodyDeactivated;
-    ev.body_a = body_id.GetIndexAndSequenceNumber();
-    ev.user_data = user_data;
-    mPendingEvents.push_back(ev);
-  }
-
-  void QueueContactEvent(PendingEventType type, const BodyID &a, const BodyID &b, const ContactManifold &manifold) {
-    PendingEvent ev;
-    ev.type = type;
-    ev.body_a = a.GetIndexAndSequenceNumber();
-    ev.body_b = b.GetIndexAndSequenceNumber();
-    ev.normal = manifold.mWorldSpaceNormal;
-    ev.penetration_depth = manifold.mPenetrationDepth;
-    if (!manifold.mRelativeContactPointsOn1.empty()) {
-      ev.point = manifold.GetWorldSpaceContactPointOn1(0);
-    }
-    std::lock_guard<std::mutex> lock(mPendingEventsMutex);
-    mPendingEvents.push_back(ev);
-  }
-
-  void QueueContactRemoved(const BodyID &a, const BodyID &b) {
-    std::lock_guard<std::mutex> lock(mPendingEventsMutex);
-    PendingEvent ev;
-    ev.type = PendingEventType::ContactRemoved;
-    ev.body_a = a.GetIndexAndSequenceNumber();
-    ev.body_b = b.GetIndexAndSequenceNumber();
-    mPendingEvents.push_back(ev);
-  }
 */
 
   void World::setGravity(float gravity) {
-    // _physicsSystem.setGravity(Vec3(0.0f, -gravity, 0.0f));
+    _physicsSystem->SetGravity(JPH::Vec3(0.0f, -gravity, 0.0f));
   }
 
   // void Step(float dt) { mPhysicsSystem.Update(dt, 1, &mTempAllocator, &mJobSystem); }
@@ -362,8 +236,8 @@ namespace JOLT {
 
   // Compact state snapshot (56 bytes/body).
   // Per body: bodyId(u32) posX posY posZ(f32×3) rotX rotY rotZ rotW(f32×4) lvX lvY lvZ(f32×3) avX avY avZ(f32×3)
-  std::vector<uint8_t> World::snapshotState() {
     /*
+  std::vector<uint8_t> World::snapshotState() {
     BodyIDVector bodyIds;
     mPhysicsSystem.GetBodies(bodyIds);
     const BodyInterface &bi = mPhysicsSystem.GetBodyInterface();
@@ -390,13 +264,13 @@ namespace JOLT {
       append(&avx, 4); append(&avy, 4); append(&avz, 4);
     }
     return buf;
-    */
     std::vector<uint8_t> ret;
     return ret;
   }
+    */
 
-  bool World::applySnapshot(std::vector<uint8_t> buf) {
     /*
+  bool World::applySnapshot(std::vector<uint8_t> buf) {
     const uint8_t* data = buf.data();
     size_t len = buf.size();
     constexpr size_t stride = 56;
@@ -416,9 +290,9 @@ namespace JOLT {
       bi.SetLinearAndAngularVelocity(bid, Vec3(lvx, lvy, lvz), Vec3(avx, avy, avz));
     }
     return true;
-    */
     return false;
   }
+    */
 
   // Full scene save using Jolt PhysicsScene (current pos/rot/vel + shapes).
   // Note: custom constraints from mConstraints are NOT included.

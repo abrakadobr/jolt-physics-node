@@ -9,6 +9,33 @@
 
 namespace JOLT {
 
+
+  // using JPH;
+  /*
+  enum class PendingEventType {
+    BodyActivated,
+    BodyDeactivated,
+    ContactAdded,
+    ContactPersisted,
+    ContactRemoved
+  };
+
+  struct PendingEvent {
+    PendingEventType type;
+    uint32_t body_a = 0;
+    uint32_t body_b = 0;
+    uint64_t user_data = 0;
+    RVec3 point = RVec3::sZero();
+    Vec3 normal = Vec3::sZero();
+    float penetration_depth = 0.0f;
+  };
+
+  struct DebugGeoResult {
+    std::vector<float>    linePos, triPos;
+    std::vector<uint32_t> lineCol, triCol;
+  };
+  */
+
   struct EventBodyActivation {
     JPH::BodyID   body;
     bool          active;

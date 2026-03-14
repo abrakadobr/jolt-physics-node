@@ -18,36 +18,10 @@
 #include <thread>
 
 #include "layers_manager.h"
+#include "body_manager.h"
 #include "events.h"
 
 namespace JOLT {
-
-  // using JPH;
-  /*
-  enum class PendingEventType {
-    BodyActivated,
-    BodyDeactivated,
-    ContactAdded,
-    ContactPersisted,
-    ContactRemoved
-  };
-
-  struct PendingEvent {
-    PendingEventType type;
-    uint32_t body_a = 0;
-    uint32_t body_b = 0;
-    uint64_t user_data = 0;
-    RVec3 point = RVec3::sZero();
-    Vec3 normal = Vec3::sZero();
-    float penetration_depth = 0.0f;
-  };
-
-  struct DebugGeoResult {
-    std::vector<float>    linePos, triPos;
-    std::vector<uint32_t> lineCol, triCol;
-  };
-  */
-
 
   class World: public NApiBase<World> {
     public:
@@ -59,13 +33,14 @@ namespace JOLT {
           METHOD(World,on),
           METHOD(World,initialize),
           // emit — template method, cannot be exposed via METHOD
-          METHOD(World,snapshotState),
-          METHOD(World,applySnapshot),
+          // METHOD(World,snapshotState),
+          // METHOD(World,applySnapshot),
           METHOD(World,saveScene),
           METHOD(World,loadScene),
           METHOD(World,setGravity),
           METHOD(World,layers),
-          METHOD(World,layersManager)
+          METHOD(World,layersManager),
+          METHOD(World,bodiesManager)
         };
       }
 
@@ -84,22 +59,27 @@ namespace JOLT {
         }
       }
 
-      std::vector<uint8_t> snapshotState();
-      bool applySnapshot(std::vector<uint8_t> data);
+      // std::vector<uint8_t> snapshotState();
+      // bool applySnapshot(std::vector<uint8_t> data);
       std::vector<uint8_t> saveScene();
       int32_t loadScene(std::vector<uint8_t> data);
 
       LayersManager * layersManager();
+      BodyManager * bodiesManager();
+
+      JPH::PhysicsSystem * joltPhysicsSystem();
       // DebugGeoResult GetDebugGeometry(bool draw_bodies, bool draw_constraints, bool draw_constraint_limits, bool wireframe);
 
       void setGravity(float gravity);
 
+      // just helper for debugging
       std::vector<std::string> layers();
     private:
       napi_env                      _nenv = nullptr;
 
       WorldSettings                 _settings;
       LayersManager                 * _layersManager = nullptr;
+      BodyManager                   * _bodiesManager = nullptr;
 
       JsCallbacksMap                _callbacksMap;
       JPH::TempAllocatorImpl        * _tempAllocator = nullptr;

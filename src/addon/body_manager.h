@@ -1,0 +1,52 @@
+/**
+ *
+ *  This is not a Jolt::BodyManager class. Jolt::BodyManager is inner-jolt class and  not accessible
+ *  in regular life by developers who use jost. Various functionality of Jolt::BodyManager exists in
+ *  PhysicsSystem, BodyInterface, BodyLockRead/Write
+ *
+ *  current Joltjs::BodyManager combine functionality from different Jolt classes into single
+ *  and will be used by js developer for bodies related things
+ *
+ **/
+#pragma once
+
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/Body/BodyInterface.h>
+
+#include "napi/napi_base.h"
+
+namespace JOLT {
+
+  class World;
+
+  class BodyManager: public NApiBase<BodyManager> {
+    public:
+      static constexpr const char* ClassName = "BodyManager";
+
+      static std::vector<napi_property_descriptor> Methods() {
+        return {
+          // METHOD(BodyManager,initialize),
+          // emit — template method, cannot be exposed via METHOD
+          METHOD(BodyManager,snapshotState),
+          METHOD(BodyManager,applySnapshot)
+          // METHOD(World,saveScene),
+          // METHOD(World,loadScene),
+        };
+      }
+
+      explicit BodyManager(napi_env env);
+      ~BodyManager();
+
+      void initialize(World * _world);
+
+      std::vector<uint8_t> snapshotState();
+      bool applySnapshot(std::vector<uint8_t> data);
+    private:
+      napi_env                      _nenv = nullptr;
+      World                         * _world = nullptr;
+      JPH::PhysicsSystem            * _physicsSystem = nullptr;
+      JPH::BodyInterface            * _bodyInterface = nullptr;
+  };
+
+}
