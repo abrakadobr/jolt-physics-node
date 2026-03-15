@@ -18,7 +18,7 @@
 #include <thread>
 
 #include "layers_manager.h"
-#include "body_manager.h"
+#include "body/body_manager.h"
 #include "events.h"
 
 namespace JOLT {

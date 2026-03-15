@@ -10,7 +10,7 @@
         "src/addon/events.cpp",
         "src/addon/layers.cpp",
         "src/addon/layers_manager.cpp",
-        "src/addon/body_manager.cpp",
+        "src/addon/body/body_manager.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [
