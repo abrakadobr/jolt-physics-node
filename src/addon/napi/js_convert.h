@@ -10,6 +10,7 @@
 
 #include "../defines.h"
 #include "../events.h"
+#include "../body/body_shapes.h"
 
 namespace JOLT {
 
@@ -56,6 +57,18 @@ template<> struct JsConvert<float> {
 template<> struct JsConvert<std::string> {
   static std::string from(napi_env env, napi_value v);
   static napi_value to(napi_env env, const std::string& s);
+};
+
+/* BodyShapeType */
+template<> struct JsConvert<BodyShapeType> {
+  static BodyShapeType from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const BodyShapeType &v);
+};
+
+/* BodyMotionType */
+template<> struct JsConvert<BodyMotionType> {
+  static BodyMotionType from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const BodyMotionType &v);
 };
 
 /* WorldSettings */

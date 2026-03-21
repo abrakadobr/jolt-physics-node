@@ -105,7 +105,136 @@ napi_value JsConvert<std::string>::to(napi_env env, const std::string& s) {
   napi_create_string_utf8(env, s.c_str(), s.size(), &r);
   return r;
 }
-/* string */
+
+/* BodyShapeType */
+BodyShapeType JsConvert<BodyShapeType>::from(napi_env env, napi_value v) {
+  size_t len;
+  napi_get_value_string_utf8(env, v, nullptr, 0, &len);
+  std::string s;
+  s.resize(len);
+  napi_get_value_string_utf8(env, v, s.data(), len+1, &len);
+  if (s == "sphere") return BodyShapeType::Sphere;
+  if (s == "box") return BodyShapeType::Box;
+  if (s == "triangle") return BodyShapeType::Triangle;
+  if (s == "capsule") return BodyShapeType::Capsule;
+  if (s == "taperedCapsule") return BodyShapeType::TaperedCapsule;
+  if (s == "cylinder") return BodyShapeType::Cylinder;
+  if (s == "convexHull") return BodyShapeType::ConvexHull;
+
+// Compound shapes
+  if (s == "staticCompound") return BodyShapeType::StaticCompound;
+  if (s == "mutableCompaund") return BodyShapeType::MutableCompound;
+
+// Decorated shapes
+  if (s == "rotatedTranslated") return BodyShapeType::RotatedTranslated;
+  if (s == "scaled") return BodyShapeType::Scaled;
+  if (s == "offsetCenterOfMass") return BodyShapeType::OffsetCenterOfMass;
+
+// Other shapes
+  if (s == "mesh") return BodyShapeType::Mesh;
+  if (s == "heightField") return BodyShapeType::HeightField;
+  if (s == "softBody") return BodyShapeType::SoftBody;
+
+// User defined shapes
+  if (s == "user1") return BodyShapeType::User1;
+  if (s == "user2") return BodyShapeType::User2;
+  if (s == "user3") return BodyShapeType::User3;
+  if (s == "user4") return BodyShapeType::User4;
+  if (s == "user5") return BodyShapeType::User5;
+  if (s == "user6") return BodyShapeType::User6;
+  if (s == "user7") return BodyShapeType::User7;
+  if (s == "user8") return BodyShapeType::User8;
+
+// User defined convex shapes
+  if (s == "userConvex1") return BodyShapeType::UserConvex1;
+  if (s == "userConvex2") return BodyShapeType::UserConvex2;
+  if (s == "userConvex3") return BodyShapeType::UserConvex3;
+  if (s == "userConvex4") return BodyShapeType::UserConvex4;
+  if (s == "userConvex5") return BodyShapeType::UserConvex5;
+  if (s == "userConvex6") return BodyShapeType::UserConvex6;
+  if (s == "userConvex7") return BodyShapeType::UserConvex7;
+  if (s == "userConvex8") return BodyShapeType::UserConvex8;
+
+// Other shapes
+  if (s == "plane") return BodyShapeType::Plane;
+  if (s == "taperedCylinder") return BodyShapeType::TaperedCylinder;
+  return BodyShapeType::Empty;
+}
+
+napi_value JsConvert<BodyShapeType>::to(napi_env env, const BodyShapeType& s) {
+  napi_value r;
+  std::string str = "";
+  if (s == BodyShapeType::Sphere) str = "sphere";
+  if (s == BodyShapeType::Box) str = "box";
+  if (s == BodyShapeType::Triangle) str = "triangle";
+  if (s == BodyShapeType::Capsule) str = "capsule";
+  if (s == BodyShapeType::TaperedCapsule) str = "taperedCylinder";
+  if (s == BodyShapeType::Cylinder) str = "cylinter";
+  if (s == BodyShapeType::ConvexHull) str = "convexHull";
+
+	// Compound shapes
+  if (s == BodyShapeType::StaticCompound) str = "staticCompound";
+  if (s == BodyShapeType::MutableCompound) str = "mutableCompaund";
+
+	// Decorated shapes
+  if (s == BodyShapeType::RotatedTranslated) str = "rotatedTranslated";
+  if (s == BodyShapeType::Scaled) str = "scaled";
+  if (s == BodyShapeType::OffsetCenterOfMass) str = "offsetCenterOfMass";
+
+	// Other shapes
+  if (s == BodyShapeType::Mesh) str = "mesh";
+  if (s == BodyShapeType::HeightField) str = "heightField";
+  if (s == BodyShapeType::SoftBody) str = "softBody";
+
+	// User defined shapes
+  if (s == BodyShapeType::User1) str = "user1";
+  if (s == BodyShapeType::User2) str = "user2";
+  if (s == BodyShapeType::User3) str = "user3";
+  if (s == BodyShapeType::User4) str = "user4";
+  if (s == BodyShapeType::User5) str = "user5";
+  if (s == BodyShapeType::User6) str = "user6";
+  if (s == BodyShapeType::User7) str = "user7";
+  if (s == BodyShapeType::User8) str = "user8";
+
+	// User defined convex shapes
+  if (s == BodyShapeType::UserConvex1) str = "userConvex1";
+  if (s == BodyShapeType::UserConvex2) str = "userConvex2";
+  if (s == BodyShapeType::UserConvex3) str = "userConvex3";
+  if (s == BodyShapeType::UserConvex4) str = "userConvex4";
+  if (s == BodyShapeType::UserConvex5) str = "userConvex5";
+  if (s == BodyShapeType::UserConvex6) str = "userConvex6";
+  if (s == BodyShapeType::UserConvex7) str = "userConvex7";
+  if (s == BodyShapeType::UserConvex8) str = "userConvex8";
+
+	// Other shapes
+  if (s == BodyShapeType::Plane) str = "Plane";
+  if (s == BodyShapeType::TaperedCylinder) str = "taperedCylinder";
+  if (s == BodyShapeType::Empty || str == "") str = "empty";
+  napi_create_string_utf8(env, str.c_str(), str.size(), &r);
+  return r;
+}
+
+/* BodyMotionType */
+BodyMotionType JsConvert<BodyMotionType>::from(napi_env env, napi_value v) {
+  size_t len;
+  napi_get_value_string_utf8(env, v, nullptr, 0, &len);
+  std::string s;
+  s.resize(len);
+  napi_get_value_string_utf8(env, v, s.data(), len+1, &len);
+  if (s == "kinematic") return BodyMotionType::Kinematic;
+  if (s == "dynamic") return BodyMotionType::Dynamic;
+  return BodyMotionType::Static;
+}
+
+napi_value JsConvert<BodyMotionType>::to(napi_env env, const BodyMotionType& s) {
+  napi_value r;
+  std::string str = "";
+  if (s == BodyMotionType::Kinematic) str = "kinematic";
+  if (s == BodyMotionType::Dynamic) str = "dynamic";
+  if (s == BodyMotionType::Static || str == "") str = "static";
+  napi_create_string_utf8(env, str.c_str(), str.size(), &r);
+  return r;
+}
 
 WorldSettings JsConvert<WorldSettings>::from(napi_env env, napi_value v) {
   WorldSettings r;

@@ -2,19 +2,21 @@
 
 #include <vector>
 #include "layers.h"
-#include "napi/napi_base.h"
+#include "../napi/napi_base.h"
 
 namespace JOLT {
 
   struct Layer {
     uint32_t                id;
-    JPH::ObjectLayer        objectLayer;
+    JPH::ObjectLayer        objectLayer = 0;
     JPH::BroadPhaseLayer    broadPhaseLayer;
     std::vector<uint32_t>   collides;
   };
 
 class LayersManager: public NApiBase<LayersManager> {
   public:
+    static uint32_t const InvalidLayerID = 0xffffffff;
+
     static constexpr const char* ClassName = "LayersManager";
 
     static std::vector<napi_property_descriptor> Methods() {
@@ -41,6 +43,9 @@ class LayersManager: public NApiBase<LayersManager> {
 
     std::vector<uint32_t> layersIDs();
     std::string layerName(uint32_t lid);
+    uint32_t layerID(const std::string &name);
+    Layer layerByID(uint32_t lid);
+    Layer layerByName(const std::string &name);
 
     bool  objectLayerFilter(JPH::ObjectLayer o1, JPH::ObjectLayer o2);
     JPH::BroadPhaseLayer  object2broad(JPH::ObjectLayer l);

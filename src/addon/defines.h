@@ -11,4 +11,9 @@ namespace JOLT {
     uint32_t    maxContacts = 10240;
   };
 
+  enum class BodyMotionType: uint8_t {
+    Static,     ///< Non movable
+	  Kinematic,  ///< Movable using velocities only, does not respond to forces
+	  Dynamic,    ///< Responds to forces as a normal physics object
+  };
 }

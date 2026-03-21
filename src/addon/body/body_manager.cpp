@@ -1,6 +1,9 @@
+
+
 #include "body_manager.h"
-#include "world.h"
-#include "napi/napi_registry.h"
+#include "../world.h"
+#include "../napi/napi_registry.h"
+#include "../layers/layers_manager.h"
 
 namespace JOLT {
 
@@ -8,10 +11,21 @@ namespace JOLT {
   BodyManager::BodyManager(napi_env env) : _nenv(env) {}
   BodyManager::~BodyManager() {}
 
+  BodyMotionType BodyManager::motionTypeFromJolt(JPH::EMotionType mt) {
+    if (mt == JPH::EMotionType::Kinematic) return BodyMotionType::Kinematic;
+    if (mt == JPH::EMotionType::Dynamic) return BodyMotionType::Dynamic;
+    return BodyMotionType::Static;
+  }
+  JPH::EMotionType BodyManager::motionTypeToJolt(BodyMotionType tp) {
+    if (tp == BodyMotionType::Kinematic) return JPH::EMotionType::Kinematic;
+    if (tp == BodyMotionType::Dynamic) return JPH::EMotionType::Dynamic;
+    return JPH::EMotionType::Static;
+  }
 
   void BodyManager::initialize(World * world) {
     _world = world;
     _physicsSystem = _world->joltPhysicsSystem();
+    _bodyInterface = &_physicsSystem->GetBodyInterface();
   }
   // --- Serialization ---
 
@@ -76,6 +90,45 @@ namespace JOLT {
   }
 
 
+  Box * BodyManager::createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) {
+    Layer l = _world->layersManager()->layerByName(layer);
+    if (l.id == LayersManager::InvalidLayerID)
+      l = _world->layersManager()->layerByName("static");
+    if (l.id == LayersManager::InvalidLayerID) {
+      // make error
+    }
+    JPH::EMotionType emt = motionTypeToJolt(motionType);
+    JPH::EActivation act = activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+
+    JPH::BodyCreationSettings el_settings(new JPH::BoxShape(halfSize), pos, rot, emt, l.objectLayer);
+    JPH::Body * joltBody = _bodyInterface->CreateBody(el_settings); // Note that if we run out of bodies this can return nullptr
+    Box * body = new Box(_nenv);
+    body->setJoltBody(joltBody);
+    body->setJoltBodyInterface(_bodyInterface);
+    _bodies[body->id()] = body;
+	  _bodyInterface->AddBody(joltBody->GetID(), act);
+    return body;
+  }
+
+  Sphere * BodyManager::createSphere(const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) {
+    Layer l = _world->layersManager()->layerByName(layer);
+    if (l.id == LayersManager::InvalidLayerID)
+      l = _world->layersManager()->layerByName("static");
+    if (l.id == LayersManager::InvalidLayerID) {
+      // make error
+    }
+    JPH::EMotionType emt = motionTypeToJolt(motionType);
+    JPH::EActivation act = activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+
+    JPH::BodyCreationSettings el_settings(new JPH::SphereShape(radius), pos, rot, emt, l.objectLayer);
+    JPH::Body * joltBody = _bodyInterface->CreateBody(el_settings); // Note that if we run out of bodies this can return nullptr
+    Sphere * body = new Sphere(_nenv);
+    body->setJoltBody(joltBody);
+    body->setJoltBodyInterface(_bodyInterface);
+    _bodies[body->id()] = body;
+	  _bodyInterface->AddBody(joltBody->GetID(), act);
+    return body;
+  }
 }
 
 

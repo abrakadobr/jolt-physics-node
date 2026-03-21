@@ -1,11 +1,6 @@
 #pragma once
 
-#include <Jolt/Jolt.h>
-#include <Jolt/Math/Vec3.h>
-#include <Jolt/Physics/Body/BodyID.h>
-#include <Jolt/Physics/Collision/CollideShape.h>
-#include <Jolt/Physics/Collision/ContactListener.h>
-#include <Jolt/Physics/Body/BodyActivationListener.h>
+#include "jolt.h"
 
 namespace JOLT {
 

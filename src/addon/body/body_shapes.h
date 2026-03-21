@@ -6,7 +6,7 @@ namespace JOLT {
 
 
 /// This enumerates all shape types, each shape can return its type through Shape::GetSubType
-enum class BodyShapeType : uint8_t
+enum class BodyShapeType
 {
 	// Convex shapes
 	Sphere,

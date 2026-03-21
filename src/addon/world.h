@@ -1,23 +1,15 @@
 #pragma once
 
+#include "jolt.h"
 #include "napi/napi_base.h"
 #include "napi/jolt_convert.h"
-#include <Jolt/Jolt.h>
-#include <Jolt/RegisterTypes.h>
-#include <Jolt/Core/Memory.h>
-#include <Jolt/Core/Factory.h>
-#include <Jolt/Math/Real.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Math/Vec3.h>
 #include <map>
 #include <vector>
 #include <array>
 #include <string>
 #include <thread>
 
-#include "layers_manager.h"
+#include "layers/layers_manager.h"
 #include "body/body_manager.h"
 #include "events.h"
 

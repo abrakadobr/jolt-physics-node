@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./js_convert.h"
+#include "./jolt_convert.h"
 
 namespace JOLT {
 

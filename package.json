@@ -39,7 +39,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node-gyp rebuild",
+    "build": "node-gyp build",
+    "rebuild": "node-gyp rebuild",
     "test": "node test/smoke.js",
     "examples": "nodemon examples/server.js",
     "docs": "typedoc"

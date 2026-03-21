@@ -10,11 +10,15 @@
  **/
 #pragma once
 
-#include <Jolt/Jolt.h>
-#include <Jolt/Physics/PhysicsSystem.h>
-#include <Jolt/Physics/Body/BodyInterface.h>
+#include <map>
 
-#include "napi/napi_base.h"
+#include "../jolt.h"
+#include "../napi/napi_base.h"
+#include "../defines.h"
+
+#include "body.h"
+#include "box.h"
+#include "sphere.h"
 
 namespace JOLT {
 
@@ -35,6 +39,9 @@ namespace JOLT {
         };
       }
 
+      static BodyMotionType motionTypeFromJolt(JPH::EMotionType mt);
+      static JPH::EMotionType motionTypeToJolt(BodyMotionType tp);
+
       explicit BodyManager(napi_env env);
       ~BodyManager();
 
@@ -42,11 +49,17 @@ namespace JOLT {
 
       std::vector<uint8_t> snapshotState();
       bool applySnapshot(std::vector<uint8_t> data);
+
+      // Body  * createBody(BodyShapeType type, )
+      Box           * createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      Sphere        * createSphere(const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
     private:
       napi_env                      _nenv = nullptr;
       World                         * _world = nullptr;
       JPH::PhysicsSystem            * _physicsSystem = nullptr;
       JPH::BodyInterface            * _bodyInterface = nullptr;
+
+      std::map<uint32_t, Body*>     _bodies;
   };
 
 }

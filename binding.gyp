@@ -8,9 +8,12 @@
         "src/addon/napi/js_convert.cpp",
         "src/addon/napi/jolt_convert.cpp",
         "src/addon/events.cpp",
-        "src/addon/layers.cpp",
-        "src/addon/layers_manager.cpp",
+        "src/addon/layers/layers.cpp",
+        "src/addon/layers/layers_manager.cpp",
         "src/addon/body/body_manager.cpp",
+        "src/addon/body/body.cpp",
+        "src/addon/body/box.cpp",
+        "src/addon/body/sphere.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [

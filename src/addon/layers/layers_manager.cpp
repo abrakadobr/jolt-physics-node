@@ -1,5 +1,5 @@
 #include "layers_manager.h"
-#include "napi/napi_registry.h"
+#include "../napi/napi_registry.h"
 #include <algorithm>
 
 namespace JOLT {
@@ -46,6 +46,31 @@ namespace JOLT {
     }
     return "";
   }
+
+  uint32_t LayersManager::layerID(const std::string &name) {
+    if (!_layers.count(name)) return LayersManager::InvalidLayerID;
+    return _layers[name].id;
+  }
+
+  Layer LayersManager::layerByID(uint32_t lid) {
+    std::string name = layerName(lid);
+    if (name != "") return layerByName(name);
+    Layer l;
+    l.id = LayersManager::InvalidLayerID;
+    l.objectLayer = l.id;
+    l.broadPhaseLayer = JPH::BroadPhaseLayer(l.id);
+    return l;
+  }
+
+  Layer LayersManager::layerByName(const std::string &name) {
+    if (!_layers.count(name)) {
+      Layer l;
+      l.id = LayersManager::InvalidLayerID;
+      return l;
+    }
+    return _layers[name];
+  }
+
 
   bool LayersManager::addLayerCollision(std::string src, std::string dst, bool both) {
     if (!_layers.count(src) || !_layers.count(dst)) return false;
