@@ -58,7 +58,9 @@
     "ragdoll"
   ],
   "devDependencies": {
+    "express": "^5.2.1",
     "nodemon": "^3.1.14",
+    "socket.io": "^4.8.3",
     "typedoc": "^0.27.0",
     "ws": "^8.18.0"
   }

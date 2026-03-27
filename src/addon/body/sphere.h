@@ -15,8 +15,14 @@ class Sphere: public Body, public NApiBase<Sphere> {
     static std::vector<napi_property_descriptor> Methods() {
       return {
         METHOD(Sphere,position),
+        METHOD(Sphere,comPosition),
         METHOD(Sphere,rotation),
+        METHOD(Sphere,linearVelocity),
+        METHOD(Sphere,transform),
+        METHOD(Sphere,comTransform),
         METHOD(Sphere,getType),
+        METHOD(Sphere,on),
+        // emit — template method, cannot be exposed via METHOD
         METHOD(Sphere, id)
       };
     };

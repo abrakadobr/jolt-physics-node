@@ -36,6 +36,28 @@ namespace JOLT {
     bool          active;
   };
 
+  struct EventBodyTransform {
+    JPH::BodyID   body;
+    JPH::Vec3     position;
+    JPH::Quat     rotation;
+  };
+
+  struct EventBodyVelocity {
+    JPH::BodyID   body;
+    JPH::Vec3     linearVelocity;
+  };
+
+  // world emits: both bodies
+  struct EventBodyContact {
+    JPH::BodyID   body1;
+    JPH::BodyID   body2;
+  };
+
+  // each body emits: only the other body
+  struct EventBodyContactSelf {
+    JPH::BodyID   other;
+  };
+
   class World;
 
 // An example contact listener

@@ -12,10 +12,11 @@
 #include "layers/layers_manager.h"
 #include "body/body_manager.h"
 #include "events.h"
+#include "event_emitter.h"
 
 namespace JOLT {
 
-  class World: public NApiBase<World> {
+  class World: public NApiBase<World>, public EventEmitter {
     public:
 
       static constexpr const char* ClassName = "World";
@@ -27,6 +28,15 @@ namespace JOLT {
           // emit — template method, cannot be exposed via METHOD
           // METHOD(World,snapshotState),
           // METHOD(World,applySnapshot),
+          METHOD(World,reset),
+          METHOD(World,runPhysics),
+          METHOD(World,stepPhysics),
+          METHOD(World,stopPhysics),
+          METHOD(World,state),
+          METHOD(World,speed),
+          METHOD(World,fps),
+          METHOD(World,worldRun),
+          METHOD(World,worldStop),
           METHOD(World,saveScene),
           METHOD(World,loadScene),
           METHOD(World,setGravity),
@@ -40,32 +50,34 @@ namespace JOLT {
       ~World();
 
       void initialize(WorldSettings s);
+      void setGravity(float gravity);
 
-      void on(const std::string &event, JsCallback);
-      template<class T>
-      void emit(const std::string &event, T data) const {
-        if (_callbacksMap.count(event) > 0) {
-          for (const JsCallback &cb: _callbacksMap.at(event)) {
-            cb.call(data);
-          }
-        }
-      }
-
-      // std::vector<uint8_t> snapshotState();
-      // bool applySnapshot(std::vector<uint8_t> data);
       std::vector<uint8_t> saveScene();
       int32_t loadScene(std::vector<uint8_t> data);
 
       LayersManager * layersManager();
       BodyManager * bodiesManager();
-
       JPH::PhysicsSystem * joltPhysicsSystem();
-      // DebugGeoResult GetDebugGeometry(bool draw_bodies, bool draw_constraints, bool draw_constraint_limits, bool wireframe);
-
-      void setGravity(float gravity);
-
-      // just helper for debugging
       std::vector<std::string> layers();
+      // DebugGeoResult GetDebugGeometry(bool draw_bodies, bool draw_constraints, bool draw_constraint_limits, bool wireframe);
+      
+      void                          runPhysics(float speed = 1.0);
+      void                          stepPhysics();
+      void                          stopPhysics();
+
+      WorldState                    state() const;
+      float                         speed() const;
+      float                         fps() const;
+
+      void                          worldRun(float speed = 1.0, bool withPhysics = false);
+      void                          worldMain();
+      void                          worldLoop(double deltaMs);
+      void                          worldStop();
+
+      void                          reset();
+    protected:
+      void                          toState(WorldState next);
+      void                          setSpeed(float speed);
     private:
       napi_env                      _nenv = nullptr;
 
@@ -73,22 +85,22 @@ namespace JOLT {
       LayersManager                 * _layersManager = nullptr;
       BodyManager                   * _bodiesManager = nullptr;
 
-      JsCallbacksMap                _callbacksMap;
       JPH::TempAllocatorImpl        * _tempAllocator = nullptr;
       JPH::JobSystemThreadPool      * _jobSystem = nullptr;
       JPH::PhysicsSystem            * _physicsSystem = nullptr;
 
       EngineBodyActivationListener  * _bodyActivationListner = nullptr;
       EngineContactListener         * _contactListner = nullptr;
-      // BPLayerInterfaceImpl mBroadPhaseLayerInterface;
-      // ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
-      // ObjectLayerPairFilterImpl mObjectLayerPairFilter;
-      // ActivationListenerImpl mActivationListener;
-      // ContactListenerImpl mContactListener;
-      // napi_ref mBodyActivationCallbackRef = nullptr;
-      // napi_ref mContactCallbackRef = nullptr;
-      // std::mutex mPendingEventsMutex;
-      // std::vector<PendingEvent> mPendingEvents;
+
+      WorldState                    _state;
+      float                         _speed = 1.0;
+      float                         _fps = 0.0;
+
+      double                        _targetFrame = 1.0/60.0;
+
+      uint64_t                      _step = 0;
+      bool                          _worldSpins = false;
+      bool                          _stepRequested = false; // = true for Step mode on request to do next step
 
       // uint32_t mNextConstraintId = 1;
       // std::unordered_map<uint32_t, Ref<Constraint>> mConstraints;

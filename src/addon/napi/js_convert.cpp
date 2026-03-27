@@ -236,6 +236,28 @@ napi_value JsConvert<BodyMotionType>::to(napi_env env, const BodyMotionType& s) 
   return r;
 }
 
+/* WorldState */
+WorldState JsConvert<WorldState>::from(napi_env env, napi_value v) {
+  size_t len;
+  napi_get_value_string_utf8(env, v, nullptr, 0, &len);
+  std::string s;
+  s.resize(len);
+  napi_get_value_string_utf8(env, v, s.data(), len+1, &len);
+  if (s == "run") return WorldState::Run;
+  if (s == "step") return WorldState::Step;
+  return WorldState::Stop;
+}
+
+napi_value JsConvert<WorldState>::to(napi_env env, const WorldState& s) {
+  napi_value r;
+  std::string str = "";
+  if (s == WorldState::Run) str = "run";
+  if (s == WorldState::Step) str = "step";
+  if (s == WorldState::Stop || str == "") str = "stop";
+  napi_create_string_utf8(env, str.c_str(), str.size(), &r);
+  return r;
+}
+
 WorldSettings JsConvert<WorldSettings>::from(napi_env env, napi_value v) {
   WorldSettings r;
   bool has = false;
@@ -288,5 +310,208 @@ napi_value JsConvert<EventBodyActivation>::to(napi_env env, const EventBodyActiv
 }
 
 
+/*  PhysicsMaterial */
+PhysicsMaterial JsConvert<PhysicsMaterial>::from(napi_env env, napi_value v) {
+  PhysicsMaterial r;
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "name", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "name", &vv);
+    r.name = JsConvert<std::string>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "friction", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "friction", &vv);
+    r.friction = JsConvert<float>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "restitution", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "restitution", &vv);
+    r.restitution = JsConvert<float>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<PhysicsMaterial>::to(napi_env env, const PhysicsMaterial &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  napi_set_named_property(env, r, "name", JsConvert<std::string>::to(env, v.name));
+  napi_set_named_property(env, r, "friction",    JsConvert<float>::to(env, v.friction));
+  napi_set_named_property(env, r, "restitution", JsConvert<float>::to(env, v.restitution));
+  return r;
+}
+
+static void AbstractShapeFromJs(napi_env env, napi_value v, AbstractShape &r) {
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "type", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "type", &vv);
+    r.type = JsConvert<BodyShapeType>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "subType", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "subType", &vv);
+    r.subType = JsConvert<BodyShapeType>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "userData", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "userData", &vv);
+    double d = 0;
+    napi_get_value_double(env, vv, &d);
+    r.userData = static_cast<uint64_t>(d);
+  }
+  if (napi_has_named_property(env, v, "material", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "material", &vv);
+    r.material = JsConvert<PhysicsMaterial>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "convexRadius", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "convexRadius", &vv);
+    r.convexRadius = JsConvert<float>::from(env, vv);
+  }
+}
+
+static void AbstractShapeToJs(napi_env env, napi_value r, const AbstractShape &v) {
+  napi_set_named_property(env, r, "type", JsConvert<BodyShapeType>::to(env, v.type));
+  napi_set_named_property(env, r, "subType", JsConvert<BodyShapeType>::to(env, v.subType));
+  napi_value ud;
+  napi_create_double(env, static_cast<double>(v.userData), &ud);
+  napi_set_named_property(env, r, "userData", ud);
+  napi_set_named_property(env, r, "material", JsConvert<PhysicsMaterial>::to(env, v.material));
+  napi_set_named_property(env, r, "convexRadius", JsConvert<float>::to(env, v.convexRadius));
+}
+
+/*  BoxShape */
+BoxShape JsConvert<BoxShape>::from(napi_env env, napi_value v) {
+  BoxShape r;
+  AbstractShapeFromJs(env, v, r);
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "halfExtent", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "halfExtent", &vv);
+    r.halfExtent = JsConvert<JPH::Vec3>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<BoxShape>::to(napi_env env, const BoxShape &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  AbstractShapeToJs(env, r, v);
+  napi_set_named_property(env, r, "halfExtent", JsConvert<JPH::Vec3>::to(env, v.halfExtent));
+  return r;
+}
+
+/*  SphereShape */
+SphereShape JsConvert<SphereShape>::from(napi_env env, napi_value v) {
+  SphereShape r;
+  AbstractShapeFromJs(env, v, r);
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "radius", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "radius", &vv);
+    r.radius = JsConvert<float>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<SphereShape>::to(napi_env env, const SphereShape &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  AbstractShapeToJs(env, r, v);
+  napi_set_named_property(env, r, "radius", JsConvert<float>::to(env, v.radius));
+  return r;
+}
+
+/*  CapsuleShape */
+CapsuleShape JsConvert<CapsuleShape>::from(napi_env env, napi_value v) {
+  CapsuleShape r;
+  AbstractShapeFromJs(env, v, r);
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "halfHeight", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "halfHeight", &vv);
+    r.inHalfHeight = JsConvert<float>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "radius", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "radius", &vv);
+    r.inRadius = JsConvert<float>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<CapsuleShape>::to(napi_env env, const CapsuleShape &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  AbstractShapeToJs(env, r, v);
+  napi_set_named_property(env, r, "halfHeight", JsConvert<float>::to(env, v.inHalfHeight));
+  napi_set_named_property(env, r, "radius", JsConvert<float>::to(env, v.inRadius));
+  return r;
+}
+
+/*  TriangleShape */
+TriangleShape JsConvert<TriangleShape>::from(napi_env env, napi_value v) {
+  TriangleShape r;
+  AbstractShapeFromJs(env, v, r);
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "p1", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "p1", &vv);
+    r.p1 = JsConvert<JPH::Vec3>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "p2", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "p2", &vv);
+    r.p2 = JsConvert<JPH::Vec3>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "p3", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "p3", &vv);
+    r.p3 = JsConvert<JPH::Vec3>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<TriangleShape>::to(napi_env env, const TriangleShape &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  AbstractShapeToJs(env, r, v);
+  napi_set_named_property(env, r, "p1", JsConvert<JPH::Vec3>::to(env, v.p1));
+  napi_set_named_property(env, r, "p2", JsConvert<JPH::Vec3>::to(env, v.p2));
+  napi_set_named_property(env, r, "p3", JsConvert<JPH::Vec3>::to(env, v.p3));
+  return r;
+}
+
+/*  BodyCreationSettings */
+BodyCreationSettings JsConvert<BodyCreationSettings>::from(napi_env env, napi_value v) {
+  BodyCreationSettings r;
+  bool has = false;
+  napi_value vv;
+  if (napi_has_named_property(env, v, "position", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "position", &vv);
+    r.position = JsConvert<JPH::Vec3>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "rotation", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "rotation", &vv);
+    r.rotation = JsConvert<JPH::Quat>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "active", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "active", &vv);
+    r.active = JsConvert<bool>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "motionType", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "motionType", &vv);
+    r.motionType = JsConvert<BodyMotionType>::from(env, vv);
+  }
+  if (napi_has_named_property(env, v, "layer", &has) == napi_ok && has) {
+    napi_get_named_property(env, v, "layer", &vv);
+    r.layer = JsConvert<std::string>::from(env, vv);
+  }
+  return r;
+}
+
+napi_value JsConvert<BodyCreationSettings>::to(napi_env env, const BodyCreationSettings &v) {
+  napi_value r;
+  napi_create_object(env, &r);
+  napi_set_named_property(env, r, "position", JsConvert<JPH::Vec3>::to(env, v.position));
+  napi_set_named_property(env, r, "rotation", JsConvert<JPH::Quat>::to(env, v.rotation));
+  napi_set_named_property(env, r, "active", JsConvert<bool>::to(env, v.active));
+  napi_set_named_property(env, r, "motionType", JsConvert<BodyMotionType>::to(env, v.motionType));
+  napi_set_named_property(env, r, "layer", JsConvert<std::string>::to(env, v.layer));
+  return r;
+}
 
 }

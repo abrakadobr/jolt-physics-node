@@ -14,6 +14,9 @@
         "src/addon/body/body.cpp",
         "src/addon/body/box.cpp",
         "src/addon/body/sphere.cpp",
+        "src/addon/body/triangle.cpp",
+        "src/addon/body/capsule.cpp",
+        "src/addon/body/convexhull.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [

@@ -1,6 +1,7 @@
 
 
 #include "body_manager.h"
+#include <iostream>
 #include "../world.h"
 #include "../napi/napi_registry.h"
 #include "../layers/layers_manager.h"
@@ -27,27 +28,37 @@ namespace JOLT {
     _physicsSystem = _world->joltPhysicsSystem();
     _bodyInterface = &_physicsSystem->GetBodyInterface();
   }
+
+  Body* BodyManager::getBody(JPH::BodyID id) {
+    auto it = _bodies.find(id.GetIndexAndSequenceNumber());
+    return it != _bodies.end() ? it->second : nullptr;
+  }
+
+  void BodyManager::update(int frames) {
+    for (const auto pair: _bodies) {
+      pair.second->update(frames);
+    }
+  }
   // --- Serialization ---
 
   // Compact state snapshot (56 bytes/body).
   // Per body: bodyId(u32) posX posY posZ(f32×3) rotX rotY rotZ rotW(f32×4) lvX lvY lvZ(f32×3) avX avY avZ(f32×3)
   std::vector<uint8_t> BodyManager::snapshotState() {
-    /*
-    BodyIDVector bodyIds;
-    mPhysicsSystem.GetBodies(bodyIds);
-    const BodyInterface &bi = mPhysicsSystem.GetBodyInterface();
+    JPH::BodyIDVector bodyIds;
+    _physicsSystem->GetBodies(bodyIds);
+    // const BodyInterface &bi = mPhysicsSystem.GetBodyInterface();
     std::vector<uint8_t> buf;
     buf.reserve(bodyIds.size() * 56);
     auto append = [&](const void *src, size_t n) {
       const uint8_t *p = reinterpret_cast<const uint8_t *>(src);
       buf.insert(buf.end(), p, p + n);
     };
-    for (const BodyID &bid : bodyIds) {
+    for (const JPH::BodyID &bid : bodyIds) {
       if (bid.IsInvalid()) continue;
-      RVec3 pos; Quat rot;
-      bi.GetPositionAndRotation(bid, pos, rot);
-      Vec3 lv = bi.GetLinearVelocity(bid);
-      Vec3 av = bi.GetAngularVelocity(bid);
+      JPH::RVec3 pos; JPH::Quat rot;
+      _bodyInterface->GetPositionAndRotation(bid, pos, rot);
+      JPH::Vec3 lv = _bodyInterface->GetLinearVelocity(bid);
+      JPH::Vec3 av = _bodyInterface->GetAngularVelocity(bid);
       uint32_t id = bid.GetIndexAndSequenceNumber();
       float px = (float)pos.GetX(), py = (float)pos.GetY(), pz = (float)pos.GetZ();
       float rx = rot.GetX(), ry = rot.GetY(), rz = rot.GetZ(), rw = rot.GetW();
@@ -59,18 +70,14 @@ namespace JOLT {
       append(&avx, 4); append(&avy, 4); append(&avz, 4);
     }
     return buf;
-    */
-    std::vector<uint8_t> ret;
-    return ret;
   }
 
   bool BodyManager::applySnapshot(std::vector<uint8_t> buf) {
-    /*
     const uint8_t* data = buf.data();
     size_t len = buf.size();
     constexpr size_t stride = 56;
     if (len % stride != 0) return false;
-    BodyInterface &bi = mPhysicsSystem.GetBodyInterface();
+    // BodyInterface &bi = mPhysicsSystem.GetBodyInterface();
     for (size_t off = 0; off < len; off += stride) {
       uint32_t id;
       float px, py, pz, rx, ry, rz, rw, lvx, lvy, lvz, avx, avy, avz;
@@ -79,56 +86,53 @@ namespace JOLT {
       memcpy(&rx,  data + off + 16, 4); memcpy(&ry,  data + off + 20, 4); memcpy(&rz,  data + off + 24, 4); memcpy(&rw,  data + off + 28, 4);
       memcpy(&lvx, data + off + 32, 4); memcpy(&lvy, data + off + 36, 4); memcpy(&lvz, data + off + 40, 4);
       memcpy(&avx, data + off + 44, 4); memcpy(&avy, data + off + 48, 4); memcpy(&avz, data + off + 52, 4);
-      BodyID bid(id);
-      if (!bi.IsAdded(bid)) continue;
-      bi.SetPositionAndRotation(bid, RVec3(px, py, pz), Quat(rx, ry, rz, rw), EActivation::DontActivate);
-      bi.SetLinearAndAngularVelocity(bid, Vec3(lvx, lvy, lvz), Vec3(avx, avy, avz));
+      JPH::BodyID bid(id);
+      if (!_bodyInterface->IsAdded(bid)) continue;
+      _bodyInterface->SetPositionAndRotation(bid, JPH::RVec3(px, py, pz), JPH::Quat(rx, ry, rz, rw), JPH::EActivation::DontActivate);
+      _bodyInterface->SetLinearAndAngularVelocity(bid, JPH::Vec3(lvx, lvy, lvz), JPH::Vec3(avx, avy, avz));
     }
     return true;
-    */
-    return false;
   }
 
 
-  Box * BodyManager::createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) {
-    Layer l = _world->layersManager()->layerByName(layer);
+  template<class T>
+  T* BodyManager::_addBody(T* body, JPH::Shape* shape, const BodyCreationSettings &settings) {
+    Layer l = _world->layersManager()->layerByName(settings.layer);
     if (l.id == LayersManager::InvalidLayerID)
       l = _world->layersManager()->layerByName("static");
-    if (l.id == LayersManager::InvalidLayerID) {
-      // make error
-    }
-    JPH::EMotionType emt = motionTypeToJolt(motionType);
-    JPH::EActivation act = activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
-
-    JPH::BodyCreationSettings el_settings(new JPH::BoxShape(halfSize), pos, rot, emt, l.objectLayer);
-    JPH::Body * joltBody = _bodyInterface->CreateBody(el_settings); // Note that if we run out of bodies this can return nullptr
-    Box * body = new Box(_nenv);
+    JPH::EMotionType emt = motionTypeToJolt(settings.motionType);
+    JPH::EActivation act = settings.active ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+    JPH::BodyCreationSettings bcs(shape, settings.position, settings.rotation, emt, l.objectLayer);
+    JPH::Body* joltBody = _bodyInterface->CreateBody(bcs);
     body->setJoltBody(joltBody);
     body->setJoltBodyInterface(_bodyInterface);
     _bodies[body->id()] = body;
-	  _bodyInterface->AddBody(joltBody->GetID(), act);
+    _bodyInterface->AddBody(joltBody->GetID(), act);
     return body;
   }
 
-  Sphere * BodyManager::createSphere(const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) {
-    Layer l = _world->layersManager()->layerByName(layer);
-    if (l.id == LayersManager::InvalidLayerID)
-      l = _world->layersManager()->layerByName("static");
-    if (l.id == LayersManager::InvalidLayerID) {
-      // make error
-    }
-    JPH::EMotionType emt = motionTypeToJolt(motionType);
-    JPH::EActivation act = activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
-
-    JPH::BodyCreationSettings el_settings(new JPH::SphereShape(radius), pos, rot, emt, l.objectLayer);
-    JPH::Body * joltBody = _bodyInterface->CreateBody(el_settings); // Note that if we run out of bodies this can return nullptr
-    Sphere * body = new Sphere(_nenv);
-    body->setJoltBody(joltBody);
-    body->setJoltBodyInterface(_bodyInterface);
-    _bodies[body->id()] = body;
-	  _bodyInterface->AddBody(joltBody->GetID(), act);
-    return body;
+  Box* BodyManager::createBox(const BoxShape &shape, const BodyCreationSettings &settings) {
+    return _addBody(new Box(_nenv), new JPH::BoxShape(shape.halfExtent, shape.convexRadius), settings);
   }
+
+  Sphere* BodyManager::createSphere(const SphereShape &shape, const BodyCreationSettings &settings) {
+    return _addBody(new Sphere(_nenv), new JPH::SphereShape(shape.radius), settings);
+  }
+
+  Triangle* BodyManager::createTriangle(const TriangleShape &shape, const BodyCreationSettings &settings) {
+    return _addBody(new Triangle(_nenv), new JPH::TriangleShape(shape.p1, shape.p2, shape.p3, shape.convexRadius), settings);
+  }
+
+  Capsule* BodyManager::createCapsule(const CapsuleShape &shape, const BodyCreationSettings &settings) {
+    return _addBody(new Capsule(_nenv), new JPH::CapsuleShape(shape.inHalfHeight, shape.inRadius), settings);
+  }
+
+  // Box* BodyManager::createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) { ... }
+  // Sphere* BodyManager::createSphere(const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) { ... }
+  // Triangle* BodyManager::createTriangle(const JPH::Vec3 &p1, const JPH::Vec3 &p2, const JPH::Vec3 p3, const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) { ... }
+  // Capsule* BodyManager::createCapsule(const float halfHeight, const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) { ... }
+  // ConvexHull* BodyManager::createConvexHull(const JPH::Vec3* points, int pointsNum, const float radius, const JPH::Vec3 &pos, const JPH::Quat &rot, bool activate, const BodyMotionType &motionType, const std::string &layer) { ... }
+
 }
 
 

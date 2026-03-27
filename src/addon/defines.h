@@ -16,4 +16,11 @@ namespace JOLT {
 	  Kinematic,  ///< Movable using velocities only, does not respond to forces
 	  Dynamic,    ///< Responds to forces as a normal physics object
   };
+
+  enum class WorldState: uint8_t {
+    Stop,
+    Step,
+    Run
+  };
+
 }

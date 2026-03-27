@@ -71,6 +71,12 @@ template<> struct JsConvert<BodyMotionType> {
   static napi_value to(napi_env env, const BodyMotionType &v);
 };
 
+/* WorldState */
+template<> struct JsConvert<WorldState> {
+  static WorldState from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const WorldState &v);
+};
+
 /* WorldSettings */
 template<> struct JsConvert<WorldSettings> {
   static WorldSettings from(napi_env env, napi_value v);
@@ -114,6 +120,45 @@ template<class T> struct JsConvert<std::vector<T> > {
       return arr;
   }
 };
+
+/*  PhysicsMaterial */
+template<> struct JsConvert<PhysicsMaterial> {
+  static PhysicsMaterial from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const PhysicsMaterial &v);
+};
+
+/*  BoxShape */
+template<> struct JsConvert<BoxShape> {
+  static BoxShape from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const BoxShape &v);
+};
+
+/*  SphereShape */
+template<> struct JsConvert<SphereShape> {
+  static SphereShape from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const SphereShape &v);
+};
+
+/*  CapsuleShape */
+template<> struct JsConvert<CapsuleShape> {
+  static CapsuleShape from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const CapsuleShape &v);
+};
+
+/*  TriangleShape */
+template<> struct JsConvert<TriangleShape> {
+  static TriangleShape from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const TriangleShape &v);
+};
+
+/*  BodyCreationSettings */
+template<> struct JsConvert<BodyCreationSettings> {
+  static BodyCreationSettings from(napi_env env, napi_value v);
+  static napi_value to(napi_env env, const BodyCreationSettings &v);
+};
+
+
+
 
 // Forward declaration — full definition of JsConvert<T*>::to is in napi_base.h
 // after NApiBase<T> is fully defined (avoids circular include).

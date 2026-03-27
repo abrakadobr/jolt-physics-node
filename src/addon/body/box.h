@@ -15,8 +15,12 @@ class Box: public Body, public NApiBase<Box> {
     static std::vector<napi_property_descriptor> Methods() {
       return {
         METHOD(Box,position),
+        METHOD(Box,comPosition),
         METHOD(Box,rotation),
-        METHOD(Box,getType),
+        METHOD(Box,linearVelocity),
+        METHOD(Box,transform),
+        METHOD(Box,comTransform),
+        METHOD(Box,on),
         METHOD(Box, id)
       };
     };

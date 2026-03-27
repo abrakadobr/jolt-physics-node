@@ -125,6 +125,46 @@ napi_value JsConvert<JPH::Mat44>::to(napi_env env, JPH::Mat44 v) {
     return result;
 }
 
+// ─── EventBodyTransform ──────────────────────────────────────────────────────
+
+napi_value JsConvert<EventBodyTransform>::to(napi_env env, const EventBodyTransform& v) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "body",     JsConvert<JPH::BodyID>::to(env, v.body));
+    napi_set_named_property(env, obj, "position", JsConvert<JPH::Vec3>::to(env, v.position));
+    napi_set_named_property(env, obj, "rotation", JsConvert<JPH::Quat>::to(env, v.rotation));
+    return obj;
+}
+
+// ─── EventBodyVelocity ───────────────────────────────────────────────────────
+
+napi_value JsConvert<EventBodyVelocity>::to(napi_env env, const EventBodyVelocity& v) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "body",           JsConvert<JPH::BodyID>::to(env, v.body));
+    napi_set_named_property(env, obj, "linearVelocity", JsConvert<JPH::Vec3>::to(env, v.linearVelocity));
+    return obj;
+}
+
+// ─── EventBodyContact ────────────────────────────────────────────────────────
+
+napi_value JsConvert<EventBodyContact>::to(napi_env env, const EventBodyContact& v) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "body1", JsConvert<JPH::BodyID>::to(env, v.body1));
+    napi_set_named_property(env, obj, "body2", JsConvert<JPH::BodyID>::to(env, v.body2));
+    return obj;
+}
+
+// ─── EventBodyContactSelf ────────────────────────────────────────────────────
+
+napi_value JsConvert<EventBodyContactSelf>::to(napi_env env, const EventBodyContactSelf& v) {
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "other", JsConvert<JPH::BodyID>::to(env, v.other));
+    return obj;
+}
+
 // ─── RayCastResult ───────────────────────────────────────────────────────────
 
 napi_value JsConvert<JPH::RayCastResult>::to(napi_env env, const JPH::RayCastResult& v) {

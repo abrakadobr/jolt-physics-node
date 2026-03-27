@@ -1,17 +1,18 @@
 
 #pragma once
 
-#include <Jolt/Core/Core.h>
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
+#include <Jolt/Core/Core.h>
 #include <Jolt/Core/Memory.h>
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Math/Real.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Core/Result.h>
+#include <Jolt/Math/Real.h>
 #include <Jolt/Math/Vec3.h>
 #include <Jolt/Math/Quat.h>
+#include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/EActivation.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/Body.h>
@@ -24,5 +25,9 @@
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
+#include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/TriangleShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>

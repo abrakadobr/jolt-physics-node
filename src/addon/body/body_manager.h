@@ -19,6 +19,9 @@
 #include "body.h"
 #include "box.h"
 #include "sphere.h"
+#include "triangle.h"
+#include "capsule.h"
+#include "convexhull.h"
 
 namespace JOLT {
 
@@ -33,9 +36,12 @@ namespace JOLT {
           // METHOD(BodyManager,initialize),
           // emit — template method, cannot be exposed via METHOD
           METHOD(BodyManager,snapshotState),
-          METHOD(BodyManager,applySnapshot)
-          // METHOD(World,saveScene),
-          // METHOD(World,loadScene),
+          METHOD(BodyManager,applySnapshot),
+          METHOD(BodyManager,createBox),
+          METHOD(BodyManager,createSphere),
+          METHOD(BodyManager,createTriangle),
+          METHOD(BodyManager,createCapsule),
+          // METHOD(BodyManager,createConvexHull)
         };
       }
 
@@ -45,15 +51,30 @@ namespace JOLT {
       explicit BodyManager(napi_env env);
       ~BodyManager();
 
-      void initialize(World * _world);
+      void        initialize(World * _world);
+      void        update(int frames);
+      void        reset();
+
+      Body*       getBody(JPH::BodyID id);
 
       std::vector<uint8_t> snapshotState();
-      bool applySnapshot(std::vector<uint8_t> data);
+      bool        applySnapshot(std::vector<uint8_t> data);
 
-      // Body  * createBody(BodyShapeType type, )
-      Box           * createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
-      Sphere        * createSphere(const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      Box         * createBox(const BoxShape &shape, const BodyCreationSettings &settings);
+      Sphere      * createSphere(const SphereShape &shape, const BodyCreationSettings &settings);
+      Triangle    * createTriangle(const TriangleShape &shape, const BodyCreationSettings &settings);
+      Capsule     * createCapsule(const CapsuleShape &shape, const BodyCreationSettings &settings);
+
+      //void        activateBodies()
+      // Box           * createBox(const JPH::Vec3 &halfSize, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      // Sphere        * createSphere(const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      // Triangle      * createTriangle(const JPH::Vec3 &p1, const JPH::Vec3 &p2, const JPH::Vec3 p3, const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      // Capsule       * createCapsule(const float halfHeight, const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
+      // ConvexHull    * createConvexHull(const JPH::Vec3 * points, int pointsNum, const float radius, const JPH::Vec3 &pos = JPH::Vec3(0, 0, 0), const JPH::Quat &rot = JPH::Quat::sIdentity(), bool activate = false, const BodyMotionType &motionType = BodyMotionType::Static, const std::string &layer = "static");
     private:
+      template<class T>
+      T* _addBody(T* body, JPH::Shape* shape, const BodyCreationSettings &settings);
+
       napi_env                      _nenv = nullptr;
       World                         * _world = nullptr;
       JPH::PhysicsSystem            * _physicsSystem = nullptr;

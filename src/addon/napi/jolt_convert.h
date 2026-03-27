@@ -44,6 +44,26 @@ template<> struct JsConvert<JPH::Mat44> {
     static napi_value to(napi_env env, JPH::Mat44 v);
 };
 
+/* EventBodyTransform → {body, position, rotation}  (to only) */
+template<> struct JsConvert<EventBodyTransform> {
+    static napi_value to(napi_env env, const EventBodyTransform& v);
+};
+
+/* EventBodyVelocity → {body, linearVelocity}  (to only) */
+template<> struct JsConvert<EventBodyVelocity> {
+    static napi_value to(napi_env env, const EventBodyVelocity& v);
+};
+
+/* EventBodyContact → {body1, body2}  (to only) */
+template<> struct JsConvert<EventBodyContact> {
+    static napi_value to(napi_env env, const EventBodyContact& v);
+};
+
+/* EventBodyContactSelf → {other}  (to only) */
+template<> struct JsConvert<EventBodyContactSelf> {
+    static napi_value to(napi_env env, const EventBodyContactSelf& v);
+};
+
 /* JPH::RayCastResult → {bodyId, fraction, subShapeId}  (to only) */
 template<> struct JsConvert<JPH::RayCastResult> {
     static napi_value to(napi_env env, const JPH::RayCastResult& v);

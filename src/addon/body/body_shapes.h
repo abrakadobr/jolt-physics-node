@@ -1,6 +1,9 @@
 #pragma once
 
 #include <iterator>   // std::size
+#include <string>
+#include "../jolt.h"
+#include "../defines.h"
 
 namespace JOLT {
 
@@ -164,5 +167,46 @@ static constexpr const char *ShapeTypeNames[] = {
 };
 static_assert(std::size(ShapeTypeNames) == NumShapeTypes);
 
+
+struct PhysicsMaterial {
+  std::string       name;
+  float             friction    = 0.2f;
+  float             restitution = 0.0f;
+};
+
+struct AbstractShape {
+  BodyShapeType     type;
+  BodyShapeType     subType;
+  uint64_t          userData;
+  PhysicsMaterial   material;
+  float             convexRadius;
+};
+
+struct BoxShape: AbstractShape {
+  JPH::Vec3         halfExtent;
+};
+
+struct SphereShape: AbstractShape {
+  float             radius;
+};
+
+struct CapsuleShape: AbstractShape {
+  float             inHalfHeight;
+  float             inRadius;
+};
+
+struct TriangleShape: AbstractShape {
+  JPH::Vec3         p1;
+  JPH::Vec3         p2;
+  JPH::Vec3         p3;
+};
+
+struct BodyCreationSettings {
+  JPH::Vec3         position = JPH::Vec3::sZero();
+  JPH::Quat         rotation = JPH::Quat::sIdentity();
+  bool              active = false;
+  BodyMotionType    motionType = BodyMotionType::Static;
+  std::string       layer;
+};
 
 }
