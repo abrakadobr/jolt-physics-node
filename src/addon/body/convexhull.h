@@ -14,9 +14,13 @@ class ConvexHull: public Body, public NApiBase<ConvexHull> {
 
     static std::vector<napi_property_descriptor> Methods() {
       return {
-        METHOD(ConvexHull,position),
-        METHOD(ConvexHull,rotation),
         METHOD(ConvexHull,getType),
+        METHOD(ConvexHull,position),
+        METHOD(ConvexHull,comPosition),
+        METHOD(ConvexHull,rotation),
+        METHOD(ConvexHull,linearVelocity),
+        METHOD(ConvexHull,transform),
+        METHOD(ConvexHull,comTransform),
         METHOD(ConvexHull,on),
         METHOD(ConvexHull, id)
       };

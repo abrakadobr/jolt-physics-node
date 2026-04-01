@@ -210,6 +210,7 @@ template<class T> struct JsConvert<std::array<T> > {
 };
 */
 
+/*
 class JsCallback {
 public:
   JsCallback() = default;
@@ -257,12 +258,152 @@ public:
     napi_value argv[N ? N : 1];
     size_t i = 0;
     ((argv[i++] = JsConvert<std::decay_t<Args>>::to(_env, args)), ...);
-    napi_call_function(_env, global, fn, N, argv, nullptr);
+    napi_call_threadsafe_function(_env, global, fn, N, argv, nullptr);
   }
 
 private:
   napi_env _env = nullptr;
   napi_ref _ref = nullptr;
+};
+*/
+
+
+
+// =====================
+// JsCallback
+// =====================
+
+class JsCallback {
+public:
+  JsCallback() = default;
+
+  JsCallback(napi_env env, napi_value fn) {
+    napi_value resource_name;
+    napi_create_string_utf8(env, "JsCallback", NAPI_AUTO_LENGTH, &resource_name);
+
+    napi_create_threadsafe_function(
+      env,
+      fn,
+      nullptr,
+      resource_name,
+      0,                // unlimited queue
+      1,                // thread count
+      nullptr,
+      nullptr,
+      nullptr,
+      &JsCallback::CallJs,
+      &_tsfn
+    );
+  }
+
+  ~JsCallback() {
+    if (_tsfn) {
+      napi_release_threadsafe_function(_tsfn, napi_tsfn_abort);
+    }
+  }
+
+  // no copy
+  JsCallback(const JsCallback&) = delete;
+  JsCallback& operator=(const JsCallback&) = delete;
+
+  // move
+  JsCallback(JsCallback&& other) noexcept {
+    _tsfn = other._tsfn;
+    other._tsfn = nullptr;
+  }
+
+  JsCallback& operator=(JsCallback&& other) noexcept {
+    if (this != &other) {
+      if (_tsfn)
+        napi_release_threadsafe_function(_tsfn, napi_tsfn_abort);
+
+      _tsfn = other._tsfn;
+      other._tsfn = nullptr;
+    }
+    return *this;
+  }
+
+  // =====================
+  // call
+  // =====================
+
+  template<typename... Args>
+  void call(Args&&... args) const {
+    using Tuple = std::tuple<std::decay_t<Args>...>;
+
+    auto* payload = new PayloadImpl<Tuple>(
+      std::make_tuple(std::forward<Args>(args)...)
+    );
+
+    napi_call_threadsafe_function(
+      _tsfn,
+      payload,
+      napi_tsfn_nonblocking
+    );
+  }
+
+private:
+  napi_threadsafe_function _tsfn = nullptr;
+
+  // =====================
+  // Type-erased payload
+  // =====================
+
+  struct PayloadBase {
+    virtual ~PayloadBase() = default;
+    virtual void invoke(napi_env env, napi_value js_cb) = 0;
+  };
+
+  template<typename Tuple>
+  struct PayloadImpl : PayloadBase {
+    Tuple args;
+
+    explicit PayloadImpl(Tuple&& t) : args(std::move(t)) {}
+
+    void invoke(napi_env env, napi_value js_cb) override {
+      callWithTuple(env, js_cb, args,
+        std::make_index_sequence<std::tuple_size_v<Tuple>>{}
+      );
+    }
+  };
+
+  // =====================
+  // tuple unpack
+  // =====================
+
+  template<typename Tuple, size_t... I>
+  static void callWithTuple(
+    napi_env env,
+    napi_value js_cb,
+    Tuple& t,
+    std::index_sequence<I...>
+  ) {
+    constexpr size_t N = sizeof...(I);
+    napi_value argv[N ? N : 1];
+
+    size_t i = 0;
+    ((argv[i++] = JsConvert<std::tuple_element_t<I, Tuple>>::to(env, std::get<I>(t))), ...);
+
+    napi_value global;
+    napi_get_global(env, &global);
+
+    napi_call_function(env, global, js_cb, N, argv, nullptr);
+  }
+
+  // =====================
+  // TSFN callback
+  // =====================
+
+  static void CallJs(
+    napi_env env,
+    napi_value js_cb,
+    void* /*context*/,
+    void* data
+  ) {
+    auto* payload = static_cast<PayloadBase*>(data);
+    payload->invoke(env, js_cb);
+    delete payload;
+  }
 };
 
 typedef std::map<std::string, std::vector<JsCallback>> JsCallbacksMap;

@@ -2,6 +2,8 @@
 #include "napi/napi_registry.h"
 #include <chrono>
 #include <cmath>
+#include <sstream>
+#include <unordered_set>
 
 namespace JOLT {
 
@@ -98,16 +100,69 @@ namespace JOLT {
 
   // --- Serialization ---
 
-  // Full scene save using Jolt PhysicsScene (current pos/rot/vel + shapes).
-  // Note: custom constraints from mConstraints are NOT included.
+  // Full scene save using Jolt PhysicsScene (shapes + current pos/rot/vel).
+  // Note: constraints are NOT included.
   std::vector<uint8_t> World::saveScene() {
-    std::vector<uint8_t> ret = _bodiesManager->snapshotState();
-    return ret;
+    JPH::PhysicsScene scene;
+    scene.FromPhysicsSystem(_physicsSystem);
+    std::ostringstream ss;
+    JPH::StreamOutWrapper stream(ss);
+    scene.SaveBinaryState(stream, /*inSaveShapes=*/true, /*inSaveGroupFilter=*/true);
+    const std::string& str = ss.str();
+    return std::vector<uint8_t>(str.begin(), str.end());
   }
 
-  // Restore bodies from saved binary scene data. Returns body count created, -1 on error.
+  // Restore bodies from saveScene() data. Returns count of created bodies, -1 on error.
   int32_t World::loadScene(std::vector<uint8_t> buf) {
-    return 0;
+    std::string str(buf.begin(), buf.end());
+    std::istringstream ss(str);
+    JPH::StreamInWrapper stream(ss);
+    JPH::PhysicsScene::PhysicsSceneResult result = JPH::PhysicsScene::sRestoreFromBinaryState(stream);
+    if (result.HasError()) return -1;
+
+    // Remember existing body IDs to detect newly created ones after CreateBodies
+    JPH::BodyIDVector beforeIds;
+    _physicsSystem->GetBodies(beforeIds);
+    std::unordered_set<uint32_t> existing;
+    existing.reserve(beforeIds.size());
+    for (const JPH::BodyID& bid : beforeIds)
+      existing.insert(bid.GetIndexAndSequenceNumber());
+
+    if (!result.Get()->CreateBodies(_physicsSystem)) return -1;
+
+    // Wrap newly created Jolt bodies with typed wrappers (Box/Sphere/etc.)
+    // determined by reading shape->GetSubType() from the restored Jolt body.
+    JPH::BodyIDVector afterIds;
+    _physicsSystem->GetBodies(afterIds);
+    JPH::BodyInterface& bi = _physicsSystem->GetBodyInterface();
+    int32_t count = 0;
+    for (const JPH::BodyID& bid : afterIds) {
+      if (bid.IsInvalid()) continue;
+      uint32_t rawId = bid.GetIndexAndSequenceNumber();
+      if (existing.count(rawId)) continue;
+
+      JPH::Body* joltBody = nullptr;
+      JPH::EShapeSubType subType = JPH::EShapeSubType::Box;
+      {
+        JPH::BodyLockWrite lock(_physicsSystem->GetBodyLockInterface(), bid);
+        if (!lock.Succeeded()) continue;
+        joltBody = &lock.GetBody();
+        subType = joltBody->GetShape()->GetSubType();
+      }
+
+      Body* wrapper = nullptr;
+      switch (subType) {
+        case JPH::EShapeSubType::Sphere:   wrapper = new Sphere(_nenv);   break;
+        case JPH::EShapeSubType::Triangle: wrapper = new Triangle(_nenv); break;
+        case JPH::EShapeSubType::Capsule:  wrapper = new Capsule(_nenv);  break;
+        default:                           wrapper = new Box(_nenv);      break;
+      }
+      wrapper->setJoltBody(joltBody);
+      wrapper->setJoltBodyInterface(&bi);
+      _bodiesManager->trackBody(rawId, wrapper);
+      count++;
+    }
+    return count;
   }
 
   void World::setSpeed(float speed) {
@@ -117,6 +172,18 @@ namespace JOLT {
 
   void World::toState(WorldState next) {
     _state = next;
+  }
+
+  WorldState World::togglePhysics(float speed) {
+    if (_state == WorldState::Run) {
+      stopPhysics();
+      return WorldState::Stop;
+    }
+    if (_state == WorldState::Stop) {
+      runPhysics(speed);
+      return WorldState::Run;
+    }
+    return WorldState::Stop;
   }
 
   void World::runPhysics(float speed) {
@@ -216,7 +283,7 @@ namespace JOLT {
 
   void World::reset() {
     worldStop();
-    _bodiesManager-reset();
+    _bodiesManager->reset();
   }
 }
 

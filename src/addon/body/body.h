@@ -18,6 +18,7 @@ namespace JOLT {
       JPH::Body *         getJoltBody();
       void                setJoltBody(JPH::Body * body);
       void                setJoltBodyInterface(JPH::BodyInterface * bodyInterface);
+      void                getShape(AbstractShape &shape);
 
       void                update(int frames);
       JPH::Vec3           position() const;
@@ -27,7 +28,13 @@ namespace JOLT {
       JPH::RMat44         transform() const;
       JPH::RMat44         comTransform() const;
 
+      void                setPosition(const JPH::Vec3 &position);
+      void                setRotation(const JPH::Quat &rotation);
+      void                setPositionAndRotation(const JPH::Vec3 &position, const JPH::Quat &rotation);
+
+
       uint32_t            id() const;
+      JPH::BodyID         GetID() const;
     protected:
       BodyShapeType       _bodyShape;
       JPH::BodyInterface  * _bodyInterface;

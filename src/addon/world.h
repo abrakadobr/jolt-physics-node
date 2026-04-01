@@ -29,6 +29,7 @@ namespace JOLT {
           // METHOD(World,snapshotState),
           // METHOD(World,applySnapshot),
           METHOD(World,reset),
+          METHOD(World,togglePhysics),
           METHOD(World,runPhysics),
           METHOD(World,stepPhysics),
           METHOD(World,stopPhysics),
@@ -61,6 +62,7 @@ namespace JOLT {
       std::vector<std::string> layers();
       // DebugGeoResult GetDebugGeometry(bool draw_bodies, bool draw_constraints, bool draw_constraint_limits, bool wireframe);
       
+      WorldState                    togglePhysics(float speed = 1.0);
       void                          runPhysics(float speed = 1.0);
       void                          stepPhysics();
       void                          stopPhysics();

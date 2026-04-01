@@ -31,3 +31,5 @@
 #include <Jolt/Physics/Collision/Shape/TriangleShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/PhysicsScene.h>
+#include <Jolt/Core/StreamWrapper.h>

@@ -96,35 +96,90 @@ napi_value JsConvert<JPH::Quat>::to(napi_env env, JPH::Quat v) {
 
 // ─── Mat44 ── Float32Array(16), column-major ─────────────────────────────────
 
+/*
 JPH::Mat44 JsConvert<JPH::Mat44>::from(napi_env env, napi_value v) {
-    void* data;
-    size_t len;
-    napi_value arraybuf;
-    size_t offset;
-    napi_get_typedarray_info(env, v, nullptr, &len, &data, &arraybuf, &offset);
-    auto* f = static_cast<float*>(data);
-    // column-major: f[col*4 + row]
+    float f[4][4];
+    for (int row = 0; row < 4; ++row) {
+        napi_value rowArr;
+        napi_get_element(env, v, row, &rowArr);
+        for (int col = 0; col < 4; ++col) {
+            napi_value elem;
+            napi_get_element(env, rowArr, col, &elem);
+            double d;
+            napi_get_value_double(env, elem, &d);
+            f[row][col] = static_cast<float>(d);
+        }
+    }
+    // JPH::Mat44 ctor takes columns: Vec4(col0_row0..3), Vec4(col1_row0..3), ...
     return JPH::Mat44(
-        JPH::Vec4(f[0],  f[1],  f[2],  f[3]),   // col 0
-        JPH::Vec4(f[4],  f[5],  f[6],  f[7]),   // col 1
-        JPH::Vec4(f[8],  f[9],  f[10], f[11]),  // col 2
-        JPH::Vec4(f[12], f[13], f[14], f[15])   // col 3
+        JPH::Vec4(f[0][0], f[1][0], f[2][0], f[3][0]),
+        JPH::Vec4(f[0][1], f[1][1], f[2][1], f[3][1]),
+        JPH::Vec4(f[0][2], f[1][2], f[2][2], f[3][2]),
+        JPH::Vec4(f[0][3], f[1][3], f[2][3], f[3][3])
     );
 }
 
 napi_value JsConvert<JPH::Mat44>::to(napi_env env, JPH::Mat44 v) {
-    void* raw;
-    napi_value arraybuf;
-    napi_create_arraybuffer(env, 16 * sizeof(float), &raw, &arraybuf);
-    auto* f = static_cast<float*>(raw);
-    for (int col = 0; col < 4; ++col)
-        for (int row = 0; row < 4; ++row)
-            f[col * 4 + row] = v(row, col);
     napi_value result;
-    napi_create_typedarray(env, napi_float32_array, 16, arraybuf, 0, &result);
+    napi_create_array_with_length(env, 4, &result);
+    for (int row = 0; row < 4; ++row) {
+        napi_value rowArr;
+        napi_create_array_with_length(env, 4, &rowArr);
+        for (int col = 0; col < 4; ++col) {
+            napi_value elem;
+            napi_create_double(env, v(row, col), &elem);
+            napi_set_element(env, rowArr, col, elem);
+        }
+        napi_set_element(env, result, row, rowArr);
+    }
     return result;
 }
+*/
 
+// JS -> C++
+JPH::Mat44 JsConvert<JPH::Mat44>::from(napi_env env, napi_value v) {
+    float m[16];
+
+    for (uint32_t i = 0; i < 16; ++i) {
+        napi_value elem;
+        napi_get_element(env, v, i, &elem);
+
+        double d;
+        napi_get_value_double(env, elem, &d);
+        m[i] = static_cast<float>(d);
+    }
+
+    // column-major:
+    // m[0..3]   = col0
+    // m[4..7]   = col1
+    // m[8..11]  = col2
+    // m[12..15] = col3
+
+    return JPH::Mat44(
+        JPH::Vec4(m[0],  m[1],  m[2],  m[3]),
+        JPH::Vec4(m[4],  m[5],  m[6],  m[7]),
+        JPH::Vec4(m[8],  m[9],  m[10], m[11]),
+        JPH::Vec4(m[12], m[13], m[14], m[15])
+    );
+}
+
+// C++ -> JS
+napi_value JsConvert<JPH::Mat44>::to(napi_env env, JPH::Mat44 v) {
+    napi_value arr;
+    napi_create_array_with_length(env, 16, &arr);
+
+    for (uint32_t col = 0; col < 4; ++col) {
+        for (uint32_t row = 0; row < 4; ++row) {
+            uint32_t i = col * 4 + row; // column-major индекс
+
+            napi_value elem;
+            napi_create_double(env, v(row, col), &elem);
+            napi_set_element(env, arr, i, elem);
+        }
+    }
+
+    return arr;
+}
 // ─── EventBodyTransform ──────────────────────────────────────────────────────
 
 napi_value JsConvert<EventBodyTransform>::to(napi_env env, const EventBodyTransform& v) {

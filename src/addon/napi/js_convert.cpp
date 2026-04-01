@@ -121,6 +121,9 @@ BodyShapeType JsConvert<BodyShapeType>::from(napi_env env, napi_value v) {
   if (s == "cylinder") return BodyShapeType::Cylinder;
   if (s == "convexHull") return BodyShapeType::ConvexHull;
 
+  if (s == "convex") return BodyShapeType::Convex;
+  if (s == "compound") return BodyShapeType::Compound;
+  if (s == "decorated") return BodyShapeType::Decorated;
 // Compound shapes
   if (s == "staticCompound") return BodyShapeType::StaticCompound;
   if (s == "mutableCompaund") return BodyShapeType::MutableCompound;
@@ -172,6 +175,9 @@ napi_value JsConvert<BodyShapeType>::to(napi_env env, const BodyShapeType& s) {
   if (s == BodyShapeType::Cylinder) str = "cylinter";
   if (s == BodyShapeType::ConvexHull) str = "convexHull";
 
+  if (s == BodyShapeType::Convex) str = "convex";
+  if (s == BodyShapeType::Compound) str = "compound";
+  if (s == BodyShapeType::Decorated) str = "decorated";
 	// Compound shapes
   if (s == BodyShapeType::StaticCompound) str = "staticCompound";
   if (s == BodyShapeType::MutableCompound) str = "mutableCompaund";

@@ -20,6 +20,10 @@ enum class BodyShapeType
 	Cylinder,
 	ConvexHull,
 
+  Convex,
+  Compound,
+  Decorated,
+
 	// Compound shapes
 	StaticCompound,
 	MutableCompound,
@@ -208,5 +212,70 @@ struct BodyCreationSettings {
   BodyMotionType    motionType = BodyMotionType::Static;
   std::string       layer;
 };
+
+inline BodyShapeType fromJoltShapeType(JPH::EShapeType t) {
+  if (t == JPH::EShapeType::Convex) return BodyShapeType::Convex;
+  if (t == JPH::EShapeType::Compound) return BodyShapeType::Compound;
+  if (t == JPH::EShapeType::Decorated) return BodyShapeType::Decorated;
+  if (t == JPH::EShapeType::Mesh) return BodyShapeType::Mesh;
+  if (t == JPH::EShapeType::HeightField) return BodyShapeType::HeightField;
+  if (t == JPH::EShapeType::SoftBody) return BodyShapeType::SoftBody;
+  if (t == JPH::EShapeType::User1) return BodyShapeType::User1;
+  if (t == JPH::EShapeType::User2) return BodyShapeType::User2;
+  if (t == JPH::EShapeType::User3) return BodyShapeType::User3;
+  if (t == JPH::EShapeType::User4) return BodyShapeType::User4;
+  if (t == JPH::EShapeType::Plane) return BodyShapeType::Plane;
+  return BodyShapeType::Empty;
+}
+
+inline BodyShapeType fromJoltShapeSubType(JPH::EShapeSubType t) {
+	// Convex shapes
+	if (t == JPH::EShapeSubType::Sphere) return BodyShapeType::Sphere;
+	if (t == JPH::EShapeSubType::Box) return BodyShapeType::Box;
+	if (t == JPH::EShapeSubType::Triangle) return BodyShapeType::Triangle;
+	if (t == JPH::EShapeSubType::Capsule) return BodyShapeType::Capsule;
+	if (t == JPH::EShapeSubType::TaperedCapsule) return BodyShapeType::TaperedCapsule;
+	if (t == JPH::EShapeSubType::Cylinder) return BodyShapeType::Cylinder;
+	if (t == JPH::EShapeSubType::ConvexHull) return BodyShapeType::ConvexHull;
+
+	// Compound shapes
+	if (t == JPH::EShapeSubType::StaticCompound) return BodyShapeType::StaticCompound;
+	if (t == JPH::EShapeSubType::MutableCompound) return BodyShapeType::MutableCompound;
+
+	// Decorated shapes
+	if (t == JPH::EShapeSubType::RotatedTranslated) return BodyShapeType::RotatedTranslated;
+	if (t == JPH::EShapeSubType::Scaled) return BodyShapeType::Scaled;
+	if (t == JPH::EShapeSubType::OffsetCenterOfMass) return BodyShapeType::OffsetCenterOfMass;
+
+	// Other shapes
+	if (t == JPH::EShapeSubType::Mesh) return BodyShapeType::Mesh;
+	if (t == JPH::EShapeSubType::HeightField) return BodyShapeType::HeightField;
+	if (t == JPH::EShapeSubType::SoftBody) return BodyShapeType::SoftBody;
+
+	// User defined shapes
+	if (t == JPH::EShapeSubType::User1) return BodyShapeType::User1;
+	if (t == JPH::EShapeSubType::User2) return BodyShapeType::User2;
+	if (t == JPH::EShapeSubType::User3) return BodyShapeType::User3;
+	if (t == JPH::EShapeSubType::User4) return BodyShapeType::User4;
+	if (t == JPH::EShapeSubType::User5) return BodyShapeType::User5;
+	if (t == JPH::EShapeSubType::User6) return BodyShapeType::User6;
+	if (t == JPH::EShapeSubType::User7) return BodyShapeType::User7;
+	if (t == JPH::EShapeSubType::User8) return BodyShapeType::User8;
+
+	// User defined convex shapes
+	if (t == JPH::EShapeSubType::UserConvex1) return BodyShapeType::UserConvex1;
+	if (t == JPH::EShapeSubType::UserConvex2) return BodyShapeType::UserConvex2;
+	if (t == JPH::EShapeSubType::UserConvex3) return BodyShapeType::UserConvex3;
+	if (t == JPH::EShapeSubType::UserConvex4) return BodyShapeType::UserConvex4;
+	if (t == JPH::EShapeSubType::UserConvex5) return BodyShapeType::UserConvex5;
+	if (t == JPH::EShapeSubType::UserConvex6) return BodyShapeType::UserConvex6;
+	if (t == JPH::EShapeSubType::UserConvex7) return BodyShapeType::UserConvex7;
+	if (t == JPH::EShapeSubType::UserConvex8) return BodyShapeType::UserConvex8;
+
+	// Other shapes
+	if (t == JPH::EShapeSubType::Plane) return BodyShapeType::Plane;
+	if (t == JPH::EShapeSubType::TaperedCylinder) return BodyShapeType::TaperedCylinder;
+	return BodyShapeType::Empty;
+}
 
 }
