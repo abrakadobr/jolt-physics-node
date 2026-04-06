@@ -1,10 +1,9 @@
 #include "layers_manager.h"
-#include "../napi/napi_registry.h"
 #include <algorithm>
 
 namespace JOLT {
 
-  LayersManager::LayersManager(napi_env env): _nenv(env) {
+  LayersManager::LayersManager() {
     iObjectLayerPairFilter.setManager(this);
     iBPLayerInterface.setManager(this);
     iObjectVsBroadPhaseLayerFilter.setManager(this);
@@ -139,4 +138,3 @@ namespace JOLT {
 
 
 }
-static JOLT::AutoRegister _auto_reg_world(JOLT::LayersManager::Init);

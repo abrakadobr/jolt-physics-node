@@ -1,22 +1,14 @@
 {
   "targets": [
     {
-      "target_name": "jolt_engine",
+      "target_name": "jolt-world",
       "sources": [
-        "src/module.cpp",
+        "src/addon/addon.cpp",
         "src/addon/world.cpp",
-        "src/addon/napi/js_convert.cpp",
-        "src/addon/napi/jolt_convert.cpp",
-        "src/addon/events.cpp",
+        "src/addon/js_convert.cpp",
+        "src/addon/listners.cpp",
         "src/addon/layers/layers.cpp",
         "src/addon/layers/layers_manager.cpp",
-        "src/addon/body/body_manager.cpp",
-        "src/addon/body/body.cpp",
-        "src/addon/body/box.cpp",
-        "src/addon/body/sphere.cpp",
-        "src/addon/body/triangle.cpp",
-        "src/addon/body/capsule.cpp",
-        "src/addon/body/convexhull.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [
