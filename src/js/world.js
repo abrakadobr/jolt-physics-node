@@ -1,25 +1,27 @@
-const EventEmitter = require('events')
+// const EventEmitter = require('events')
 const { onEvent, sendCommand } = require('../../jolt.js')
 const Log = require('./log.js')
+const BodyInterface = require('./bodyInterface.js')
+const LEE = require('./logee.js')
 
-const log = Log.m('World')
+// const log = Log.m('World')
 
 // log.log('addon', { onEvent, sendCommand })
 
-class World extends EventEmitter {
+class World extends LEE {
 
-  static log(m) {
-    return Log.m(m)
-  }
+  static log() { return Log }
 
   constructor() {
     super()
+    this.setLogName('World')
     this._cid = BigInt(1);
     onEvent(e => {
       this.processEvents(e)
     })
     this._waiters = {}
     this._acks = {}
+    this._bi = new BodyInterface(this)
   }
 
   init(config = {}) {
@@ -64,15 +66,16 @@ class World extends EventEmitter {
 
   exec(cmd, ack = null) {
     cmd.commandId = this._cid++
-    log.info('cmd', cmd, ack)
+    // this.L().info('cmd', cmd, ack)
     if (ack) {
       this._acks[`${cmd.commandId}`] = ack
     }
     sendCommand(cmd)
+    return cmd.commandId
   }
 
   processEvents(list) {
-    log.info('process events', list)
+    // this.L().info('process events', list)
     list.forEach(e => {
       if (e.type === 'init') {
         this.eventWait(e.type, e.success)
@@ -86,7 +89,11 @@ class World extends EventEmitter {
         this.eventWait(e.type, e.success)
         return
       }
-      log.info('process event', e)
+      if (['bodyCreated', 'bodyAdded', 'bodyRemoved', 'bodyActivated', 'bodyDeactivated', 'bodyDestroyed'].includes(e.type)) {
+        this._bi.processEvent(e)
+        return
+      }
+      this.L().info('process event', e)
       const ack = `${e.commandId}`
       if (this._acks[ack] && typeof this._acks[ack] === 'function') {
         this._acks[ack](e)
@@ -100,6 +107,10 @@ class World extends EventEmitter {
       w(res)
     })
     this._waiters[key] = null
+  }
+
+  bodyInterface() {
+    return this._bi
   }
 }
 

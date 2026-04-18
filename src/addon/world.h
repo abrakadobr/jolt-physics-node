@@ -6,7 +6,7 @@
 #include "structs.h"
 #include "jolt.h"
 #include "listners.h"
-#include "layers/layers_manager.h"
+#include "layers_manager.h"
 
 namespace JOLT {
 
@@ -17,7 +17,7 @@ public:
   ~World();
 
   void setSpeed(float speed);
-  void start(const CommandBase &cmd, float speed = 1.0);
+  void start(const CommandBase &cmd);
   void stop(const CommandBase &cmd);
   void step(const CommandBase &cmd);
   void shutdown(const CommandBase &cmd);
@@ -34,14 +34,18 @@ public:
 
   void configure(const CommandInit &cmd);
 
-  void addBody(const CommandBody &cmd);
+  void addBody(const CommandBodyAdd &cmd);
   void removeBody(const CommandBody &cmd);
   void activateBody(const CommandBody &cmd);
   void deactivateBody(const CommandBody &cmd);
-  void destroyBody(const CommandBody &cmd);
+  void destroyBody(const CommandBodyDestroy &cmd);
 
-  void createBox(const CommandCreateBox &cmd);
-  void createSphere(const CommandCreateSphere &cmd);
+  void onBodyActivate(const JPH::BodyID &bodyId, uint64_t userData);
+  void onBodyDeactivate(const JPH::BodyID &bodyId, uint64_t userData);
+
+
+  void createBody(const CommandBodyCreate &cmd);
+  // void createSphere(const CommandCreateSphere &cmd);
   void setBodyPosition(const CommandSetPosition &cmd);
   void setBodyRotation(const CommandSetRotation &cmd);
 private:
@@ -80,11 +84,17 @@ private:
   JPH::TempAllocatorImpl        * _tempAllocator = nullptr;
   JPH::JobSystemThreadPool      * _jobSystem = nullptr;
   JPH::PhysicsSystem            * _physicsSystem = nullptr;
+  JPH::BodyInterface            * _bodyInterface = nullptr;
 
   EngineBodyActivationListener  * _bodyActivationListner = nullptr;
   EngineContactListener         * _contactListner = nullptr;
 
   LayersManager                 * _layersManager = nullptr;
+
+  std::map<uint32_t, uint64_t>    _activationCommands;
+  // std::map<quint32, quint64>    _deactivation_Commands;
+  std::vector<JPH::BodyID>      _activeBodies;
+  bool                          _doOptimize = false;
 };
 
 }

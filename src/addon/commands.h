@@ -2,6 +2,7 @@
 
 #include "includes.h"
 #include "structs.h"
+#include "shapes.h"
 #include "enums.h"
 
 namespace JOLT {
@@ -25,14 +26,16 @@ struct CommandBody: CommandBase {
   BID bodyId;
 };
 
-struct CommandCreateBox: CommandBase {
-  JPH::Vec3           half;
-  BodyCreationParams  params;
+struct CommandBodyAdd: CommandBody {
+  bool activate;
 };
 
-struct CommandCreateSphere: CommandBase {
-  float               radius;
-  BodyCreationParams  params;
+struct CommandBodyDestroy: CommandBody {
+  bool force;
+};
+
+struct CommandBodyCreate: CommandBase {
+  BodyCreationSettings  params;
 };
 
 struct CommandSetPosition: CommandBody {
@@ -42,13 +45,43 @@ struct CommandSetPosition: CommandBody {
 struct CommandSetRotation: CommandBody {
   JPH::Quat   rotation;
 };
+// --------------   LAYERS    ---------------
+struct CommandGetLayers: CommandBase {
+  bool        objectLayers = true;
+  bool        broadPhaseLayers = true;
+};
+struct CommandCreateLayer: CommandBase {
+  std::string name;
+  bool        isBroadPhase;
+};
+struct CommandRemoveLayer: CommandBase {
+  std::string name;
+  bool        isBroadPhase;
+  bool        force = false;
+};
+struct CommandRebindLayer: CommandBase {
+  std::string objectLayer;
+  std::string broadPhaseLayer;
+  bool        bind;
+};
+struct CommandModifyLayerCollision: CommandBase {
+  std::string layer1;
+  std::string layer2;
+  bool        collide;
+};
 
 using JCommand = std::variant<
   CommandBase,
   CommandInit,
+  CommandGetLayers,
+  CommandCreateLayer,
+  CommandRemoveLayer,
+  CommandRebindLayer,
+  CommandModifyLayerCollision,
   CommandBody,
-  CommandCreateBox,
-  CommandCreateSphere,
+  CommandBodyAdd,
+  CommandBodyDestroy,
+  CommandBodyCreate,
   CommandSetPosition,
   CommandSetRotation
 >;

@@ -67,6 +67,7 @@ namespace JOLT {
 	void EngineBodyActivationListener::OnBodyActivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData)
 	{
     if (!_world) return;
+    _world->onBodyActivate(inBodyID, inBodyUserData);
     /*
     EventBodyActivation e{ inBodyID, true };
     _world->emit("body-activation", e);
@@ -78,6 +79,7 @@ namespace JOLT {
 	void EngineBodyActivationListener::OnBodyDeactivated(const JPH::BodyID &inBodyID, uint64_t inBodyUserData)
 	{
     if (!_world) return;
+    _world->onBodyDeactivate(inBodyID, inBodyUserData);
     /*
     EventBodyActivation e{ inBodyID, false };
     _world->emit("body-activation", e);

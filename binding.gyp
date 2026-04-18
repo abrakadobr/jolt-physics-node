@@ -7,8 +7,7 @@
         "src/addon/world.cpp",
         "src/addon/js_convert.cpp",
         "src/addon/listners.cpp",
-        "src/addon/layers/layers.cpp",
-        "src/addon/layers/layers_manager.cpp",
+        "src/addon/layers_manager.cpp",
         "<!@(find JoltPhysics/Jolt -type f -name '*.cpp')"
       ],
       "include_dirs": [

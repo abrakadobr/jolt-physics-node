@@ -23,8 +23,14 @@ enum class Commands: uint32_t {
   Stop,
   Step,
   Shutdown,
-  CreateBox,
-  CreateSphere,
+  // ----------------
+  GetLayers,
+  CreateLayer,
+  RemoveLayer,
+  RebindLayer,  // set BroadPhaseLayer for ObjectLayer
+  ModifyLayerCollision, // modify ObjectLayers collision
+  // ----------------
+  CreateBody,
   SetPosition,
   SetRotation,
   // SetPositionAndRotation,
@@ -43,6 +49,14 @@ enum class Events: uint32_t {
   Stop,
   Step,
   Shutdown,
+  // ----------------
+  LayersList,
+  ObjectLayerCreated,
+  BroadPhaseLayerCreated,
+  ObjectLayerRemoved,
+  BroadPhaseLayerRemoved,
+  ObjectLayerCollisionRules,
+  // ----------------
   BodyCreated,
   BodyDestroyed,
   BodyAdded,
@@ -51,6 +65,7 @@ enum class Events: uint32_t {
   BodyDeactivated,
   BodyTransform,
 
+  EngineFps,
   Error,
   COUNT,
   Invalid

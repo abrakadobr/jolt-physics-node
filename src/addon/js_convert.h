@@ -2,12 +2,15 @@
 
 #include "commands.h"
 #include "events.h"
+#include "shapes.h"
 
 namespace JOLT {
 
 struct JsConvert {
 
   static std::string GetString(napi_env env, napi_value v);
+  static bool GetBoolean(napi_env env, napi_value v);
+  static bool GetBooleanProp(napi_env env, napi_value obj, const char * key, bool def);
 
   static float GetFloatProp(napi_env env, napi_value obj, const char* key, float def = 0.0);
   static uint8_t GetUInt8Prop(napi_env env, napi_value obj, const char* key, uint8_t def = 0);
@@ -19,13 +22,45 @@ struct JsConvert {
   static JPH::Vec3 GetVec3Prop(napi_env env, napi_value obj, const char * key);
   static JPH::Quat GetQuatProp(napi_env env, napi_value obj, const char * key);
 
-  static BodyCreationParams GetCreateParamsProp(napi_env env, napi_value obj, const char * key);
+  static napi_value SetRMat44(napi_env env, JPH::RMat44 v);
+  static napi_value SetVec3(napi_env env, JPH::Vec3 v);
+  static napi_value SetQuat(napi_env env, JPH::Quat v);
+
+  static void SetRMat44Prop(napi_env env, napi_value obj, const char * key, JPH::RMat44 v);
+  static void SetVec3Prop(napi_env env, napi_value obj, const char * key, JPH::Vec3 v);
+  static void SetQuatProp(napi_env env, napi_value obj, const char * key, JPH::Quat v);
+
+  static BodyCreationSettings GetCreateParamsProp(napi_env env, napi_value obj, const char * key);
 
   static Commands GetCommandType(napi_env env, napi_value v);
   static Commands GetCommandProp(napi_env env, napi_value obj, const char * key);
 
   static std::string eventType(Events e);
   static JCommand from(napi_env env, napi_value v);
+
+
+  static JPH::EMotionType  GetMotionType(napi_env env, napi_value v);
+  static napi_value SetMotionType(napi_env env, JPH::EMotionType v);
+  static void SetMotionTypeProp(napi_env evn, napi_value obj, const char * key, JPH::EMotionType v);
+  static JPH::EShapeType  GetShapeType(napi_env env, napi_value v);
+  static JPH::EShapeSubType GetShapeSubType(napi_env env, napi_value v);
+  static JPH::EMotionType  GetMotionTypeProp(napi_env env, napi_value obj, const char * key);
+  static JPH::EShapeType  GetShapeTypeProp(napi_env env, napi_value obj, const char * key);
+  static JPH::EShapeSubType GetShapeSubTypeProp(napi_env env, napi_value obj, const char * key);
+
+  static std::string StrShapeType(JPH::EShapeType v);
+  static std::string StrShapeSubType(JPH::EShapeSubType v);
+
+  static napi_value SetShapeType(napi_env env, JPH::EShapeType v);
+  static napi_value SetShapeSubType(napi_env env, JPH::EShapeSubType v);
+
+  static void SetShapeTypeProp(napi_env env, napi_value obj, const char * key, JPH::EShapeType v);
+  static void SetShapeSubTypeProp(napi_env env, napi_value obj, const char * key, JPH::EShapeSubType v);
+
+  static BodyCreationSettings GetBodyCreationSettings(napi_env env, napi_value v);
+
+  static napi_value SetBodyCreationSettings(napi_env env, const BodyCreationSettings &bcs);
+
   static napi_value to(napi_env env, const JEvent &je, bool * shutdown);
 
   static napi_value SetBoolean(napi_env env, const bool v);

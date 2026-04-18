@@ -28,7 +28,7 @@ void World::setSpeed(float speed) {
 void World::run() {
   if (_running) return;
   _running = true;
-
+  setSpeed(1.0);
   _thread = std::thread([this]() { loop(); });
 }
 
@@ -37,7 +37,7 @@ void World::runJolt() {
   _joltCreated = true;
   // std::cout << "[W@J!!]" << std::endl;
   _layersManager = new LayersManager();
-  _layersManager->init();
+  // _layersManager->init();
 
   JPH::RegisterDefaultAllocator();
   JPH::Factory::sInstance = new JPH::Factory();
@@ -66,14 +66,15 @@ void World::runJolt() {
   _contactListner = new EngineContactListener();
   _contactListner->setWorld(this);
   _physicsSystem->SetContactListener(_contactListner);
+  _bodyInterface = &_physicsSystem->GetBodyInterface();
 }
 
-void World::start(const CommandBase &cmd, float speed) {
-  setSpeed(speed);
+void World::start(const CommandBase &cmd) {
+  // setSpeed(speed);
   if (!_joltCreated) runJolt();
   if (_started) return;
-  emit( EGen::Start(cmd.commandId, true) );
   _started = true;
+  emit( EGen::Start(cmd.commandId, true) );
 }
 
 void World::stop(const CommandBase &cmd) {
@@ -133,27 +134,28 @@ void World::executeCommand(JCommand jcmd) {
     using T = std::decay_t<decltype(cmd)>;
 
     if constexpr (std::is_same_v<T, CommandBase>) {
-        if (cmd.cmd == Commands::Start) return start(cmd);
-        if (cmd.cmd == Commands::Stop) return stop(cmd);
-        if (cmd.cmd == Commands::Step) return step(cmd);
-        if (cmd.cmd == Commands::Shutdown) return shutdown(cmd);
+      if (cmd.cmd == Commands::Start) return start(cmd);
+      if (cmd.cmd == Commands::Stop) return stop(cmd);
+      if (cmd.cmd == Commands::Step) return step(cmd);
+      if (cmd.cmd == Commands::Shutdown) return shutdown(cmd);
     } else if constexpr (std::is_same_v<T, CommandInit>) {
-        // std::cout << "ExecCommand Init" << cmd.commandId << std::endl;
-        if (cmd.cmd == Commands::Init) return configure(cmd);
+      if (cmd.cmd == Commands::Init) return configure(cmd);
+    // } else if constexpr (std::is_same_v<T, CommandGetLayers>) {
+      // return _layersManager->getLayers(cmd);
+    } else if constexpr (std::is_same_v<T, CommandBodyAdd>) {
+      return addBody(cmd);
+    } else if constexpr (std::is_same_v<T, CommandBodyDestroy>) {
+      return destroyBody(cmd);
     } else if constexpr (std::is_same_v<T, CommandBody>) {
-        if (cmd.cmd == Commands::AddBody) return addBody(cmd);
-        if (cmd.cmd == Commands::RemoveBody) return removeBody(cmd);
-        if (cmd.cmd == Commands::ActivateBody) return activateBody(cmd);
-        if (cmd.cmd == Commands::DeactivateBody) return deactivateBody(cmd);
-        if (cmd.cmd == Commands::DestroyBody) return destroyBody(cmd);
-    } else if constexpr (std::is_same_v<T, CommandCreateBox>) {
-        if (cmd.cmd == Commands::CreateBox) return createBox(cmd);
-    } else if constexpr (std::is_same_v<T, CommandCreateSphere>) {
-        if (cmd.cmd == Commands::CreateSphere) return createSphere(cmd);
+      if (cmd.cmd == Commands::RemoveBody) return removeBody(cmd);
+      if (cmd.cmd == Commands::ActivateBody) return activateBody(cmd);
+      if (cmd.cmd == Commands::DeactivateBody) return deactivateBody(cmd);
+    } else if constexpr (std::is_same_v<T, CommandBodyCreate>) {
+      if (cmd.cmd == Commands::CreateBody) return createBody(cmd);
     } else if constexpr (std::is_same_v<T, CommandSetPosition>) {
-        if (cmd.cmd == Commands::SetPosition) return setBodyPosition(cmd);
+      if (cmd.cmd == Commands::SetPosition) return setBodyPosition(cmd);
     } else if constexpr (std::is_same_v<T, CommandSetRotation>) {
-        if (cmd.cmd == Commands::SetRotation) return setBodyRotation(cmd);
+      if (cmd.cmd == Commands::SetRotation) return setBodyRotation(cmd);
     }
   }, jcmd);
 }
@@ -207,6 +209,7 @@ void World::loop() {
         _fps = fpsAccumulator;
         fpsAccumulator = 0;
         secondAccumulator -= 1000.0;
+        emit(EGen::FPS(_fps));
     }
     processEvents();
     // --- frame limiting ---
@@ -227,7 +230,16 @@ void World::loop() {
 
 void World::worldLoop(double deltaMs) {
     if (!_started) return;
-    std::cout << "[physics tick]" << std::endl;
+    if (_doOptimize)
+      _physicsSystem->OptimizeBroadPhase();
+    int collisionSteps = std::round(deltaMs/_targetFrame);
+    float dms = deltaMs / 1000.0f;
+    _physicsSystem->Update(dms, collisionSteps, _tempAllocator, _jobSystem);
+    for (const JPH::BodyID &bid: _activeBodies) {
+      JPH::RMat44 transform = _bodyInterface->GetWorldTransform(bid);
+      emit(EGen::BodyTransform(bid.GetIndexAndSequenceNumber(), transform));
+    }
+    std::cout << "." << deltaMs << " - " << collisionSteps; // << std::endl;
 }
 
 void World::emit(JEvent ev) {
@@ -235,27 +247,135 @@ void World::emit(JEvent ev) {
   _events.push(ev);
 }
 
-void World::addBody(const CommandBody &cmd) {
-    std::cout << "[add body]" << std::endl;
+void World::addBody(const CommandBodyAdd &cmd) {
+  JPH::BodyID bid(cmd.bodyId);
+  JPH::EActivation mode = cmd.activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+  _bodyInterface->AddBody(bid, mode);
+  bool ok = _bodyInterface->IsAdded(bid);
+  _doOptimize = true;
+  // std::cout << "[add body]" << cmd.bodyId << ok << std::endl;
+  emit(EGen::BodyAdded(cmd.commandId, cmd.bodyId, ok));
 }
 void World::removeBody(const CommandBody &cmd) {
-    std::cout << "[remove body]" << std::endl;
+  // std::cout << "[remove body]" << cmd.bodyId << std::endl;
+  JPH::BodyID bid(cmd.bodyId);
+  _bodyInterface->RemoveBody(bid);
+  bool exists = _bodyInterface->IsAdded(bid);
+  emit(EGen::BodyRemoved(cmd.commandId, cmd.bodyId, !exists));
 }
 void World::activateBody(const CommandBody &cmd) {
-    std::cout << "[activate body]" << std::endl;
+  // std::cout << "[activate body]" << cmd.bodyId << std::endl;
+  JPH::BodyID bid(cmd.bodyId);
+  // JPH::EActivation mode = cmd.activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+  _bodyInterface->ActivateBody(bid);
+  _activationCommands[cmd.bodyId] = cmd.commandId;
+  _doOptimize = true;
+  // bool active = _bodyInterface->IsActive(bid);
+  // emit(EGen::BodyActivated(cmd.commandId, cmd.bodyId, active));
 }
 void World::deactivateBody(const CommandBody &cmd) {
-    std::cout << "[deactivate body]" << std::endl;
-}
-void World::destroyBody(const CommandBody &cmd) {
-    std::cout << "[destroy body]" << std::endl;
+  // std::cout << "[deactivate body]" << cmd.bodyId << std::endl;
+  JPH::BodyID bid(cmd.bodyId);
+  // JPH::EActivation mode = cmd.activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+  _bodyInterface->DeactivateBody(bid);
+  _activationCommands[cmd.bodyId] = cmd.commandId;
+  _doOptimize = true;
+  // bool active = _bodyInterface->IsActive(bid);
+  // emit(EGen::BodyDeactivated(cmd.commandId, cmd.bodyId, !active));
 }
 
-void World::createBox(const CommandCreateBox &cmd) {
-    std::cout << "[create box]" << std::endl;
+
+void World::onBodyActivate(const JPH::BodyID &bodyId, uint64_t userData) {
+  uint64_t commandId = 0;
+  _activeBodies.push_back(bodyId);
+  _doOptimize = true;
+  std::cout << "World::onBodyActivate" << bodyId.GetIndexAndSequenceNumber() << std::endl;
+  if (_activationCommands.count(bodyId.GetIndexAndSequenceNumber())) {
+    commandId = _activationCommands[bodyId.GetIndexAndSequenceNumber()];
+    _activationCommands.erase(bodyId.GetIndexAndSequenceNumber());
+  }
+  emit(EGen::BodyActivated(commandId, bodyId.GetIndexAndSequenceNumber(), true));
 }
-void World::createSphere(const CommandCreateSphere &cmd) {
-    std::cout << "[create sphere]" << std::endl;
+void World::onBodyDeactivate(const JPH::BodyID &bodyId, uint64_t userData) {
+  std::cout << "World::onBodyDeactivate" << bodyId.GetIndexAndSequenceNumber() << std::endl;
+  _doOptimize = true;
+  _activeBodies.erase(std::remove(_activeBodies.begin(), _activeBodies.end(), bodyId), _activeBodies.end());
+  // std::erase(_activeBodies, bodyId);
+  uint64_t commandId = 0;
+  if (_activationCommands.count(bodyId.GetIndexAndSequenceNumber())) {
+    commandId = _activationCommands[bodyId.GetIndexAndSequenceNumber()];
+    _activationCommands.erase(bodyId.GetIndexAndSequenceNumber());
+  }
+  emit(EGen::BodyDeactivated(commandId, bodyId.GetIndexAndSequenceNumber(), true));
+}
+
+
+void World::destroyBody(const CommandBodyDestroy &cmd) {
+  // std::cout << "[destroy body]" << cmd.bodyId << std::endl;
+  JPH::BodyID bid(cmd.bodyId);
+  _doOptimize = true;
+  bool exists = _bodyInterface->IsAdded(bid);
+  if (exists) {
+    if (!cmd.force) {
+      emit(EGen::BodyDestroyed(cmd.commandId, cmd.bodyId, false));
+      return;
+    }
+    bool active = _bodyInterface->IsActive(bid);
+    if (active) {
+      _bodyInterface->DeactivateBody(bid);
+      active = _bodyInterface->IsActive(bid);
+      if (active) {
+        emit(EGen::BodyDestroyed(cmd.commandId, cmd.bodyId, false));
+        return;
+      }
+      emit(EGen::BodyDeactivated(cmd.commandId, cmd.bodyId, !active));
+    }
+    _bodyInterface->RemoveBody(bid);
+    exists = _bodyInterface->IsAdded(bid);
+    if (exists) {
+      emit(EGen::BodyDestroyed(cmd.commandId, cmd.bodyId, false));
+      return;
+    }
+    emit(EGen::BodyRemoved(cmd.commandId, cmd.bodyId, false));
+  }
+  _bodyInterface->DestroyBody(bid);
+  emit(EGen::BodyDestroyed(cmd.commandId, cmd.bodyId, true));
+}
+
+void World::createBody(const CommandBodyCreate &cmd) {
+  _doOptimize = true;
+    BodyCreationSettings params = cmd.params;
+    JPH::Shape * inShape;
+    JSubShape jshape = params.shape;
+    std::visit([this, &inShape](auto&& shape) {
+      using T = std::decay_t<decltype(shape)>;
+      if constexpr (std::is_same_v<T, SphereSubShape>) {
+        inShape = new JPH::SphereShape(shape.radius);
+      } else if constexpr (std::is_same_v<T, BoxSubShape>) {
+        inShape = new JPH::BoxShape(shape.halfExtend);
+      }
+    }, jshape);
+    std::cout << "create body " << params.position.GetX() << "/" << params.position.GetY() << "/" << params.position.GetZ() << std::endl;
+    JPH::BodyCreationSettings jbcs(inShape, params.position, params.rotation, params.motionType, params.layer);
+    JPH::BodyID bid; // = 0xffffffff;//JPH::BodyID::cInvalidBodyID;
+    JPH::EActivation mode = JPH::EActivation::DontActivate;
+    bool success = true;
+    if (params.addToPhysics) {
+      if (params.activate) mode = JPH::EActivation::Activate;
+      bid = _bodyInterface->CreateAndAddBody(jbcs, mode);
+
+      if (bid.GetIndexAndSequenceNumber() == 0xffffffff)
+        success = false;
+    } else {
+      JPH::Body * b = _bodyInterface->CreateBody(jbcs);
+      if (!b) {
+        success = false;
+      } else {
+        bid = b->GetID();
+      }
+    }
+    BodyCreationEvent e = EGen::BodyCreated(cmd.commandId, success, bid.GetIndexAndSequenceNumber(), params);
+    emit(e);
 }
 void World::setBodyPosition(const CommandSetPosition &cmd) {
     std::cout << "[set body position]" << std::endl;
