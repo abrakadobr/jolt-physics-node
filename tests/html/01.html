@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Test 01</title>
+    <style>
+      html, body { height: 100vh; overflow: hidden;}
+    </style>
+    <script type="importmap">
+{
+  "imports": {
+    "js/": "/js/",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@<version>/examples/jsm/",
+    "redom": "/redom/redom.es.min.js",
+    "three": "/three/three.module.js",
+    "socket.io-client": "/socket.io-client/socket.io.esm.min.js"
+  }
+}
+</script>
+    <link href="/bootstrap-5.3.8/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <script src="/bootstrap-5.3.8/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+  </head>
+  <body class="d-flex">
+    <div class="flex-fill d-flex flex-column">
+      <div class="border-bottom d-flex flex-row">
+        <div class="col-9 p-1" id="header"></div>
+        <div class="col-3 p-1 d-flex flex-row  justify-content-center align-items-center" id="buttons"></div>
+      </div>
+      <div class="flex-fill d-flex flex-row align-items-stretch">
+        <div class="col-2 border-ok p-1 d-flex flex-column" id="sidebar"></div>
+        <div class="col-9 flex-fill d-flex justify-content-stretch align-items-stretch" id="3d-view"></div>
+      </div>
+    </div>
+    <script type="module" src="/js/test01.js"></script>
+  </body>
+</html>

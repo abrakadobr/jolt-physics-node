@@ -24,6 +24,21 @@ class Body extends LEE {
     this._motionType = params.motionType
   }
 
+  snap() {
+    return {
+      id: this._bodyId,
+      type: this._type,
+      subType: this._subType,
+      shape: this._shape,
+      position: this._position,
+      rotation: this._rotation,
+      layer: this._layer,
+      active: this._active,
+      added: this._added,
+      motionType: this._motionType
+    }
+  }
+
   id() { return this._bodyId }
   active() { return this._active }
   added() { return this._added }

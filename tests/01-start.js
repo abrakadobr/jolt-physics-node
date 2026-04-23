@@ -1,13 +1,19 @@
 const World = require('../src/js/world.js')
+const JoltServer = require('./server.js')
 const log = World.log(':01')
 
 const world = new World()
+const server = new JoltServer(world)
 
 log.info('world')
 
 const waitms = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const go = async () => {
+  await server.start({
+    public: './html',
+    index: '01.html'
+  })
   const initOk = await world.init()
   if (!initOk) {
     log.error('init failed')

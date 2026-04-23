@@ -15,6 +15,13 @@ class BodyInterface extends LEE {
     this._bodies = {}
   }
 
+  snap() {
+    return Object.keys(this._bodies).reduce((acc, bid) => {
+      acc[bid] = this._bodies[bid].snap()
+      return acc
+    })
+  }
+
   createBox(halfExtend, position, rotation, motionType, layer, addToPhysics = true, activate = false) {
     return new Promise(resolve => {
       const cid = this._world.exec({
@@ -141,6 +148,7 @@ class BodyInterface extends LEE {
         delete this._requests[cid]
       }
       this.emit('bodyCreated', body)
+      this.emit('proxy', e)
       return
     }
     if (e.type === 'bodyAdded') {
@@ -157,6 +165,7 @@ class BodyInterface extends LEE {
         resolve(e.success)
         delete this._requests[cid]
       }
+      this.emit('proxy', e)
       return
     }
     if (e.type === 'bodyRemoved') {
@@ -173,6 +182,7 @@ class BodyInterface extends LEE {
         resolve(e.success)
         delete this._requests[cid]
       }
+      this.emit('proxy', e)
       return
     }
     if (e.type === 'bodyActivated') {
@@ -190,6 +200,7 @@ class BodyInterface extends LEE {
         resolve(e.success)
         delete this._requests[cid]
       }
+      this.emit('proxy', e)
       return
     }
     if (e.type === 'bodyDeactivated') {
@@ -206,6 +217,7 @@ class BodyInterface extends LEE {
         resolve(e.success)
         delete this._requests[cid]
       }
+      this.emit('proxy', e)
       return
     }
     if (e.type === 'bodyDestroyed') {
@@ -226,6 +238,7 @@ class BodyInterface extends LEE {
         resolve()
         delete this._requests[cid]
       }
+      this.emit('proxy', e)
       return
     }
   }

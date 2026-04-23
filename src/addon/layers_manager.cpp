@@ -65,7 +65,7 @@ namespace JOLT {
     _bLayers[l.id] = l;
     _bNames[l.name] = l.id;
     _bLayerId++;
-    std::cout << "add B layer: " << l.id << "/" << l.name <<  " ?? " << _bLayerId << std::endl;
+    // std::cout << "add B layer: " << l.id << "/" << l.name <<  " ?? " << _bLayerId << std::endl;
   }
   void LayersManager::addOLayer(const std::string &name, const std::string &bname, bool collides) {
     OLayer ol;
@@ -79,7 +79,7 @@ namespace JOLT {
     _oLayers[ol.id] = ol;
     _oNames[ol.name] = ol.id;
     _oLayerId++;
-    std::cout << "add O layer: " << ol.id << "/" << ol.name << " bid: " << bl.id << std::endl;
+    // std::cout << "add O layer: " << ol.id << "/" << ol.name << " bid: " << bl.id << std::endl;
   }
 
   size_t LayersManager::oLayersNumber() const {
@@ -93,7 +93,7 @@ namespace JOLT {
     OLayer ol2 = oLayer(dst);
     _oLayers[ol1.id].oCollisions.push_back(ol2.id);
     _oLayers[ol2.id].oCollisions.push_back(ol1.id);
-    std::cout << "collision O" << ol1.id << "/" << ol2.id << std::endl;
+    // std::cout << "collision O" << ol1.id << "/" << ol2.id << std::endl;
   }
   void LayersManager::removeOOLayerCollision(std::string src, std::string dst) {
     OLayer ol1 = oLayer(src);

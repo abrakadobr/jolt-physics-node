@@ -239,7 +239,7 @@ void World::worldLoop(double deltaMs) {
       JPH::RMat44 transform = _bodyInterface->GetWorldTransform(bid);
       emit(EGen::BodyTransform(bid.GetIndexAndSequenceNumber(), transform));
     }
-    std::cout << "." << deltaMs << " - " << collisionSteps; // << std::endl;
+    // std::cout << "." << deltaMs << " - " << collisionSteps; // << std::endl;
 }
 
 void World::emit(JEvent ev) {
@@ -355,7 +355,7 @@ void World::createBody(const CommandBodyCreate &cmd) {
         inShape = new JPH::BoxShape(shape.halfExtend);
       }
     }, jshape);
-    std::cout << "create body " << params.position.GetX() << "/" << params.position.GetY() << "/" << params.position.GetZ() << std::endl;
+    // std::cout << "create body " << params.position.GetX() << "/" << params.position.GetY() << "/" << params.position.GetZ() << std::endl;
     JPH::BodyCreationSettings jbcs(inShape, params.position, params.rotation, params.motionType, params.layer);
     JPH::BodyID bid; // = 0xffffffff;//JPH::BodyID::cInvalidBodyID;
     JPH::EActivation mode = JPH::EActivation::DontActivate;
