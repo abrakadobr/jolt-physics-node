@@ -44,23 +44,24 @@ export default class Viewer extends EE {
 
     this._sceneObjects = {}
 
-    this._buttons = {}
-    this._sidebar = {}
+    // this._buttons = {}
+    // this._sidebar = {}
 
     this._state = {
       status: 'stop',
       test: '',
       stage: 'none'
     }
-    this._tests = {}
+    // this._tests = {}
     this._connected = false
-    this._test = null
-    this._testInputs = {}
-    this._testWidgets = {}
-    this._testButtons = {}
+    // this._test = null
+    // this._testInputs = {}
+    // this._testWidgets = {}
+    // this._testButtons = {}
     this._lights = {}
   }
 
+  /*
   bootButtons() {
     this._buttons.status = text('Offline')
     this._buttons.signal = el('div.badge.text-bg-secondary', this._buttons.status )
@@ -88,14 +89,11 @@ export default class Viewer extends EE {
     ])
     mount(this._sidebarWrapper, this._sidebar.wrapper)
   }
+  */
 
-  boot(viewerWrapper, sidebarWrapper, buttonsWrapper) {
+  boot(viewerWrapper) {
     this._viewerWrapper = viewerWrapper
-    this._sidebarWrapper = sidebarWrapper
-    this._buttonsWrapper = buttonsWrapper
 
-    this.bootButtons()
-    this.bootSidebar()
     const rect = this._viewerWrapper.getBoundingClientRect()
     this._scene = new THREE.Scene();
     this._camera = new THREE.PerspectiveCamera( 75, rect.width / rect.height, 0.1, 1000 );
@@ -109,7 +107,6 @@ export default class Viewer extends EE {
     this._controls = new OrbitControls(this._camera, this._renderer.domElement);
     this._controls.enableDamping = true;
     mount(this._viewerWrapper, this._canvas)
-    console.log({viewerWrapper, sidebarWrapper})
     this.onResize()
 
     window.addEventListener('resize', () => {
@@ -119,7 +116,7 @@ export default class Viewer extends EE {
       this._controls.update();
       this.animate(time)
     })
-    this.dropEmptyPlaceholder()
+    this.resetView()
   }
 
   onResize() {
@@ -132,17 +129,7 @@ export default class Viewer extends EE {
   }
 
   animate(time) {
-    if (!this._lastTime) {
-      this._lastTime = time
-      return
-    }
-    const delta = time - this._lastTime
-    this._lastTime = time
-    if (this._sceneObjects.cube) {
-      this._sceneObjects.cube.rotation.x = time/2000
-      this._sceneObjects.cube.rotation.z = time/1000
-    }
-    this._renderer.render( this._scene, this._camera );
+    this._renderer.render(this._scene, this._camera)
   }
 
   core(cr) {
@@ -161,56 +148,63 @@ export default class Viewer extends EE {
   }
 
   ioConnected() {
+    /*
     this._buttons.status.textContent = 'Online'
     setAttr(this._buttons.signal, {
       class: 'badge text-bg-success'
     })
     setAttr(this._sidebar.testSelector, { disabled: 0 })
+    */
   }
 
   ioDisconnected() {
+  /*
     this._buttons.status.textContent = 'Offline'
     setAttr(this._buttons.signal, {
       class: 'badge text-bg-secondary'
     })
     setAttr(this._sidebar.testSelector, { disabled: 1 })
+    */
   }
 
-  shapeGeometry(shape) {
+  shapeGeometry(body) {
+    const { shape } = body
     console.log('shape geom', shape)
-    if (shape.type === 'convex') {
-      if (shape.subType === 'box') {
-        const s = shape.halfExtent
+    if (body.type === 'convex') {
+      if (body.subType === 'box') {
+        const s = shape.halfExtend
         return new THREE.BoxGeometry(s.x * 2, s.y * 2, s.z * 2)
       }
-      if (shape.subType === 'sphere') {
+      if (body.subType === 'sphere') {
         return new THREE.SphereGeometry(shape.radius, 16, 16)
       }
     }
   }
 
   ioBodyCreated(body) {
-    console.log('viewer@body:created', body)
+    console.log('viewer@ioBodyCreated', body)
     const bid = `body${body.id}`
-    if (this._sceneObjects[bid]) {
-      console.error('viewer@body:created id already exists!', body, this._sceneObjects[bid])
-      return this.ioBodyUpdate(body)
-    }
+    if (this._sceneObjects[bid]) return this.ioBodyUpdate(body)
     const mat = new THREE.MeshStandardMaterial({
       wireframe: true,
       color: new THREE.Color(0xFFFF00)
     })
-    const geom = this.shapeGeometry(body.shape)
-    console.log('geom?', geom)
+    const geom = this.shapeGeometry(body)
     if (!geom) return
     const mesh = new THREE.Mesh(geom, mat)
-    // const mtx = new THREE.Matrix4().fromArray(body.transform)
-    const mtxcom = new THREE.Matrix4().fromArray(body.comTransform)
-    // mesh.matrix.copy(mtx)
-    // mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale)
-    mesh.applyMatrix4(mtxcom)
-    mesh.updateMatrixWorld(true)
-    console.log(mesh.position, mesh.scale)
+    if (body.transform) {
+      const mat = new THREE.Matrix4().fromArray(body.transform)
+      // this._sceneObjects[bid].applyMatrix4(mat)
+      mesh.matrix.copy(mat)
+      // mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale)
+      mesh.updateMatrixWorld(true)
+
+    } else {
+      if (body.position)
+        mesh.position.set(body.position.x, body.position.y, body.position.z)
+      if (body.rotation)
+        mesh.quaternion.set(body.rotation.x, body.rotation.y, body.rotation.z, body.rotation.w)
+    }
     this._sceneObjects[bid] = mesh
     this._scene.add(mesh)
   }
@@ -219,27 +213,7 @@ export default class Viewer extends EE {
 
   }
 
-  testSelectorChanged(next) {
-    if (next === this._state.test) return
-    console.log('next test', next)
-    this._core.testSelected(next, this._sidebar.scrollWindow)
-  }
-
-  setTests(tests) {
-    this._tests = tests
-    this._state.stage = 'none'
-    setChildren(this._sidebar.testSelector, [])
-    const options = Object.keys(this._tests).map(code => {
-      const params = {}
-      if (code === this._state.test)
-        params.selected = true
-      return el('option', { ...params, value: code }, this._tests[code].name)
-    })
-    options.unshift(el('option', { value: "" }, ''))
-    setChildren(this._sidebar.testSelector, options)
-    console.log('tests setted', this._tests)
-  }
-
+  /*
   setTest(test) {
     this._test = test
     this._test.on('load:start', this, this.prepareTest)
@@ -342,6 +316,7 @@ export default class Viewer extends EE {
     this.resetView();
     this._core.resetTest(this._testInputs)
   }
+  */
 
   resetView() {
     clearThree(this._scene)
@@ -388,6 +363,7 @@ export default class Viewer extends EE {
     console.log('view resetd') 
   }
 
+  /*
   configureTest() {
     this._state.stage = 'configure'
     const info = this._test.constructor.info()
@@ -444,6 +420,7 @@ export default class Viewer extends EE {
     await this._core.stepRunTest()
     this.setRunStatus('stop')
   }
+  */
 
   transformBody({body, transform}) {
     console.log('viewer@transformBody', body, transform)

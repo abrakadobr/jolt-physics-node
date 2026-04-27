@@ -42,7 +42,7 @@
     "build": "node-gyp build",
     "rebuild": "node-gyp rebuild",
     "docs": "typedoc",
-    "test:01": "nodemon -w ./src/js/ -w ./tests/ tests/01-start.js"
+    "test:01": "nodemon -w ./src/js/ -w ./tests/ --force-node-api-uncaught-exceptions-policy=true  tests/01-start.js"
   },
   "keywords": [
     "jolt",

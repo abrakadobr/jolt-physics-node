@@ -22,6 +22,7 @@ class Body extends LEE {
     this._active = params.activate
     this._added = params.addToPhysics
     this._motionType = params.motionType
+    this._transform = params.transform || null
   }
 
   snap() {
@@ -35,7 +36,8 @@ class Body extends LEE {
       layer: this._layer,
       active: this._active,
       added: this._added,
-      motionType: this._motionType
+      motionType: this._motionType,
+      transform: this._transform
     }
   }
 
@@ -44,6 +46,10 @@ class Body extends LEE {
   added() { return this._added }
   position() { return this._position }
   rotation() { return this._rotation }
+  transform(next = null) {
+    if (next) this._transform = next
+    return this._transform
+  }
 
   setAdded(next) {
     if (this._added === next) return

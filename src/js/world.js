@@ -93,6 +93,9 @@ class World extends LEE {
         this._bi.processEvent(e)
         return
       }
+      if (e.type === 'bodyTransform') {
+        this._bi.transformBody(e)
+      }
       this.L().info('process event', e)
       const ack = `${e.commandId}`
       if (this._acks[ack] && typeof this._acks[ack] === 'function') {

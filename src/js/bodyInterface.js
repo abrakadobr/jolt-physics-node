@@ -19,7 +19,7 @@ class BodyInterface extends LEE {
     return Object.keys(this._bodies).reduce((acc, bid) => {
       acc[bid] = this._bodies[bid].snap()
       return acc
-    })
+    }, {})
   }
 
   createBox(halfExtend, position, rotation, motionType, layer, addToPhysics = true, activate = false) {
@@ -128,6 +128,14 @@ class BodyInterface extends LEE {
     })
   }
 
+  transformBody(e) {
+    if (!e.bodyId || !this._bodies[e.bodyId]) {
+      this.L().warn('@bodyTransform no body', e)
+      return
+    }
+    this._bodies[e.bodyId].transform(e.transform)
+    this.emit('proxy', e)
+  }
 
   processEvent(e) {
     const cid = e.commandId

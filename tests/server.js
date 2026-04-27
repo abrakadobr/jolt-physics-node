@@ -2,6 +2,11 @@ const EventEmitter = require('events')
 const { createServer } = require("http")
 const { Server } = require("socket.io")
 const express = require('express')
+const path = require('path')
+
+BigInt.prototype.toJSON = function() { 
+  return this.toString()
+}
 
 class JoltServer extends EventEmitter {
 
@@ -34,13 +39,14 @@ class JoltServer extends EventEmitter {
       this.bindConnection(socket)
     })
     if (cfg.public && cfg.index) {
-      this._app.use(express.static(cfg.public))
+      this._app.use(express.static(path.join(__dirname, cfg.public)))
       this._app.get('/', (req, res) => {
-        res.sendFile(`${cfg.public}/${cfg.index}`, { root: __dirname })
+        this._log.info('GET /')
+        res.sendFile(path.join(__dirname, cfg.public, cfg.index))
       })
     }
     this._bi.on('proxy', e => {
-      io.emit('bi', e)
+      this._io.emit('bi', e)
     })
     return new Promise(resolve => {
       this._server.listen(cfg.port, cfg.host, () => {

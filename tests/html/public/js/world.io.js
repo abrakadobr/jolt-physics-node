@@ -13,25 +13,38 @@ export class WorldIO extends EE {
   setSocket(next) {
     this._socket = next
     if (!this._socket) return
-    this._socket.on('body:activation', event => {
-      console.log('body:activation')
+    this._socket.on('snap', snap => {
+      if (!snap || typeof snap !== 'object') return
+      Object.values(snap).forEach(body => {
+        if (!body || this._bodies[body.id]) return
+        this._bodies[body.id] = body
+        this.emit('body:created', body)
+      })
     })
-    this._socket.on('body:created', body => {
-      console.log('wio@body:created', body)
-      if (!body) return
-      if (this._bodies[body.id]) {
-        console.error('body@created id already exists', body, this._bodies[body.id]);
+    this._socket.on('bi', e => {
+      if (!e || !e.type) return
+      if (e.type === 'bodyCreated' && e.success) {
+        const p = e.params
+        const body = {
+          id: e.bodyId,
+          ...p
+        }
+        this._bodies[body.id] = body
+        this.emit('body:created', body)
+      } else if (e.type === 'bodyTransform') {
+        this.emit('body:transform', { body: e.bodyId, transform: e.transform })
+      } else if (e.type === 'bodyDestroyed') {
+        delete this._bodies[e.bodyId]
       }
-      this._bodies[body.id] = body
-      this.emit('body:created', body)
     })
-    this._socket.on('body:transform', data => {
-      console.log('wio<body:transform', data)
-      this.emit('body:transform', data)
-    })
-    this._socket.on('body:reshape', data => {
-      console.log('wio<body:reshape', data)
-      this.emit('body:reshape', data)
+    this._socket.on('snap', snap => {
+      console.log('SNAP', snap)
+      Object.keys(snap).forEach(bid => {
+        if (!this._bodies[bid]) {
+          this._bodies[bid] = snap[bid]
+          this.emit('body:created', this._bodies[bid])
+        }
+      })
     })
   }
 

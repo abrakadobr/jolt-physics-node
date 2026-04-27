@@ -1,5 +1,5 @@
 import { Manager } from 'socket.io-client'
-import { DropABallTest } from 'tests/dropABall.js'
+// import { DropABallTest } from 'tests/dropABall.js'
 import EE from './ee.js'
 import { WorldIO } from './world.io.js'
 
@@ -20,7 +20,7 @@ export default class Core extends EE {
     this._waiters = []
     this._test = null
     this._wio = new WorldIO(this)
-    this.addTest(DropABallTest)
+    // this.addTest(DropABallTest)
   }
 
   boot(viewer) {
@@ -31,7 +31,7 @@ export default class Core extends EE {
       acc[key] = info
       return acc
     }, {})
-    this._viewer.setTests(tests)
+    // this._viewer.setTests(tests)
     this._wio.on('body:created', (body) => {
       console.log('core::@body:created', body)
       this._viewer.ioBodyCreated(body)
@@ -63,7 +63,7 @@ export default class Core extends EE {
         resolved = true
         this._viewer.ioConnected()
         while( this._waiters.length) {
-          const w = this._waiterts.shift()
+          const w = this._waiters.shift()
           w.resolve()
         }
       })
@@ -76,7 +76,7 @@ export default class Core extends EE {
         this._viewer.ioDisconnected()
         this._wio.setConnected(false)
         while( this._waiters.length) {
-          const w = this._waiterts.shift()
+          const w = this._waiters.shift()
           w.reject()
         }
       })
@@ -110,7 +110,7 @@ export default class Core extends EE {
     }
     await this.wait4connection()
     this._test = new this._tests[code](this, this._viewer, sidebar)
-    this._viewer.prepareTest(this._test)
+    // this._viewer.prepareTest(this._test)
   }
 
   async resetTest(values) {

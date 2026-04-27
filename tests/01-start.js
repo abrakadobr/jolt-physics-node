@@ -11,7 +11,7 @@ const waitms = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const go = async () => {
   await server.start({
-    public: './html',
+    public: './html/public',
     index: '01.html'
   })
   const initOk = await world.init()
@@ -24,6 +24,10 @@ const go = async () => {
   // log.success('start done')
   // const startOk = await world.start()
   // log.info('start reslult', startOk)
+  await world.start()
+  log.info('waiting 10')
+  await waitms(10000)
+  log.success('waiting 10')
 
   const bi = world.bodyInterface();
   const box = await bi.createBox(
@@ -74,7 +78,6 @@ const go = async () => {
   })
   */
 
-  await world.start()
   log.success('start done')
   await waitms(2000)
   // await box.remove()
