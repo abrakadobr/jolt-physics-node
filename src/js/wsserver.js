@@ -39,10 +39,10 @@ class JoltServer extends EventEmitter {
       this.bindConnection(socket)
     })
     if (cfg.public && cfg.index) {
-      this._app.use(express.static(path.join(__dirname, cfg.public)))
+      this._app.use(express.static(cfg.public))
       this._app.get('/', (req, res) => {
         this._log.info('GET /')
-        res.sendFile(path.join(__dirname, cfg.public, cfg.index))
+        res.sendFile(path.join(cfg.public, cfg.index))
       })
     }
     this._bi.on('proxy', e => {

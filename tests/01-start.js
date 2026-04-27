@@ -1,5 +1,6 @@
+const path = require('path')
 const World = require('../src/js/world.js')
-const JoltServer = require('./server.js')
+const JoltServer = require('../src/js/wsserver.js')
 const log = World.log(':01')
 
 const world = new World()
@@ -11,7 +12,7 @@ const waitms = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const go = async () => {
   await server.start({
-    public: './html/public',
+    public: path.join(__dirname, './html/public'),
     index: '01.html'
   })
   const initOk = await world.init()
